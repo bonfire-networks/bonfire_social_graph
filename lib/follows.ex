@@ -16,7 +16,7 @@ defmodule Bonfire.Social.Graph.Follows do
   alias Bonfire.Social.LivePush
   # alias Bonfire.Data.Identity.User
   # alias Ecto.Changeset
-  # alias Pointers.Changesets
+  # alias Needle.Changesets
   import Bonfire.Boundaries.Queries
   import Untangle
   use Arrows
@@ -305,7 +305,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
   def unfollow(%{} = user, object, opts) when is_binary(object) do
     with {:ok, object} <-
-           Bonfire.Common.Pointers.get(object,
+           Bonfire.Common.Needle.get(object,
              current_user: user,
              skip_boundary_check: true
            ) do
@@ -447,7 +447,7 @@ defmodule Bonfire.Social.Graph.Follows do
   # end
 
   # defp local_or_remote_object(id) when is_binary(id) do
-  #   Bonfire.Common.Pointers.get(id, skip_boundary_check: true)
+  #   Bonfire.Common.Needle.get(id, skip_boundary_check: true)
   #   ~> local_or_remote_object()
   # end
   defp local_or_remote_object(object) do

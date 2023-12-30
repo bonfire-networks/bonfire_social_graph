@@ -65,7 +65,7 @@ defmodule Bonfire.Social.Graph do
   defp fetch_edges_standard(type, conf) do
     prepare_fun = conf[:prepare_fun] || (&prepare_edges_standard/2)
 
-    Bonfire.Common.Pointers.list_by_type!(type, [], skip_boundary_check: true, preload: false)
+    Bonfire.Common.Needle.list_by_type!(type, [], skip_boundary_check: true, preload: false)
     # |> debug()
     |> prepare_fun.(conf)
   end

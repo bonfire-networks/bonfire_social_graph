@@ -192,7 +192,7 @@ defmodule Bonfire.Social.Graph.Requests do
   #   else
   #     case ulid(object) do
   #       id when is_binary(id) ->
-  #         Common.Pointers.one(id, opts ++ [log_query: true])
+  #         Common.Needle.one(id, opts ++ [log_query: true])
   #         |> info("allowed to request ?")
   #       _ ->
   #         error(object, "no object ID, try with username")
@@ -251,7 +251,7 @@ defmodule Bonfire.Social.Graph.Requests do
 
   def unrequest(%{} = user, type, object) when is_binary(object) do
     with {:ok, object} <-
-           Bonfire.Common.Pointers.get(object, current_user: user) do
+           Bonfire.Common.Needle.get(object, current_user: user) do
       unrequest(user, type, object)
     end
   end
