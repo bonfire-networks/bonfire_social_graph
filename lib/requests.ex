@@ -192,7 +192,7 @@ defmodule Bonfire.Social.Graph.Requests do
   #   else
   #     case ulid(object) do
   #       id when is_binary(id) ->
-  #         Common.Needle.one(id, opts ++ [log_query: true])
+  #         Common.Needles.one(id, opts ++ [log_query: true])
   #         |> info("allowed to request ?")
   #       _ ->
   #         error(object, "no object ID, try with username")
