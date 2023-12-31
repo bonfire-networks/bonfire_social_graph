@@ -305,7 +305,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
   def unfollow(%{} = user, object, opts) when is_binary(object) do
     with {:ok, object} <-
-           Bonfire.Common.Needle.get(object,
+           Bonfire.Common.Needles.get(object,
              current_user: user,
              skip_boundary_check: true
            ) do
@@ -447,7 +447,7 @@ defmodule Bonfire.Social.Graph.Follows do
   # end
 
   # defp local_or_remote_object(id) when is_binary(id) do
-  #   Bonfire.Common.Needle.get(id, skip_boundary_check: true)
+  #   Bonfire.Common.Needles.get(id, skip_boundary_check: true)
   #   ~> local_or_remote_object()
   # end
   defp local_or_remote_object(object) do

@@ -251,7 +251,7 @@ defmodule Bonfire.Social.Graph.Requests do
 
   def unrequest(%{} = user, type, object) when is_binary(object) do
     with {:ok, object} <-
-           Bonfire.Common.Needle.get(object, current_user: user) do
+           Bonfire.Common.Needles.get(object, current_user: user) do
       unrequest(user, type, object)
     end
   end

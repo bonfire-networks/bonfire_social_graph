@@ -99,7 +99,7 @@ defmodule Bonfire.Social.Graph.Aliases do
 
   def remove(%{} = user, target) when is_binary(target) do
     with {:ok, target} <-
-           Bonfire.Common.Needle.get(target,
+           Bonfire.Common.Needles.get(target,
              current_user: user,
              skip_boundary_check: true
            ) do
