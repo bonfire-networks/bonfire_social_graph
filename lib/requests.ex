@@ -227,8 +227,13 @@ defmodule Bonfire.Social.Graph.Requests do
   defp maybe_already(requester, type, object) do
     case get(requester, type, object, skip_boundary_check: true) do
       {:ok, request} ->
-        debug("was already requested")
-        {:ok, request}
+        if Integration.is_local?(requester) and !Integration.is_local?(object) do
+          info(type, "was already requested, but will attempt re-federating the request")
+          Integration.maybe_federate_and_gift_wrap_activity(requester, request)
+        else
+          debug(type, "was already requested")
+          {:ok, request}
+        end
 
       e ->
         case Edges.get(type, requester, object, skip_boundary_check: true) do

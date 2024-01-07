@@ -298,7 +298,7 @@ defmodule Bonfire.Social.Graph.Follows do
       if requested?(user, object) do
         Requests.unrequest(user, Follow, object)
       else
-        error("Not following")
+        error("Cannot unfollow because not following")
       end
     end
   end
