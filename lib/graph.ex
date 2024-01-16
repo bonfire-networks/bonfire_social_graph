@@ -29,8 +29,6 @@ defmodule Bonfire.Social.Graph do
   end
 
   def init_and_load() do
-    graph_conn = graph_conn()
-
     case graph_conn() do
       nil ->
         nil
