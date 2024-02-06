@@ -26,7 +26,7 @@ defmodule Bonfire.Social.Graph.Migrations do
     end
   end
 
-  defmacro migrate_social() do
+  defmacro migrate_social_graph() do
     quote do
       if Ecto.Migration.direction() == :up,
         do: unquote(ms(:up)),
@@ -34,5 +34,5 @@ defmodule Bonfire.Social.Graph.Migrations do
     end
   end
 
-  defmacro migrate_social(dir), do: ms(dir)
+  defmacro migrate_social_graph(dir), do: ms(dir)
 end
