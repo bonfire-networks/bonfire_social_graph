@@ -58,27 +58,51 @@ defmodule Bonfire.Social.Graph.Aliases do
 
   def add(%{} = user, target, opts) when is_binary(target) do
     with {:ok, target} <-
-           Bonfire.Federate.ActivityPub.AdapterUtils.get_by_url_ap_id_or_username(target) do
+           Bonfire.Federate.ActivityPub.AdapterUtils.get_by_url_ap_id_or_username(
+             target,
+             opts ++ [return_html: true]
+           ) do
       add(user, target, opts)
     else
+      {:html, data} ->
+        info(target, "was not an AP actor, add as URL instead")
+
+        add_link_preview(
+          user,
+          target,
+          fn url, opts -> Furlex.unfurl_html(url, data, opts) end,
+          opts
+        )
+
       {:error, e} ->
-        warn(e, "could not find an AP actor, add as URL instead")
-        # add_link(user, target, "link", %{}, opts)
-        with %{} = media <-
-               maybe_apply(Bonfire.Files.Acts.URLPreviews, :maybe_fetch_and_save, [
-                 user,
-                 target,
-                 [
-                   update_existing: :force,
-                   type_fn: fn meta ->
-                     e(meta, "facebook", "og:site_name", nil) ||
-                       e(meta, "other", "expected-hostname", nil) ||
-                       e(meta, "wikibase", "publicationTitle", nil) || "link"
-                   end
-                 ]
-               ]) do
-          add(user, media, opts)
-        end
+        info(target, "could not find an AP actor, maybe add as URL instead")
+        add_link_preview(user, target, nil, opts)
+    end
+  end
+
+  defp add_link_preview(user, target, fetch_fn, opts) do
+    # add_link(user, target, "link", %{}, opts)
+    with %{} = media <-
+           maybe_apply(Bonfire.Files.Acts.URLPreviews, :maybe_fetch_and_save, [
+             user,
+             target,
+             [
+               # true, # :force
+               update_existing: :force,
+               fetch_fn: fetch_fn,
+               type_fn: fn meta ->
+                 # e(meta, "wikibase", "publicationTitle", nil) || 
+                 (e(meta, "facebook", "og:site_name", nil) ||
+                    e(meta, "oembed", "provider_name", nil) ||
+                    e(meta, "other", "expected-hostname", nil) ||
+                    URI.parse(target).host ||
+                    "link")
+                 |> String.replace("www.", "")
+                 |> String.replace_trailing(".com", "")
+               end
+             ]
+           ]) do
+      add(user, media, opts)
     end
   end
 
