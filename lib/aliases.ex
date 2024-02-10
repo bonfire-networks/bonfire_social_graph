@@ -60,25 +60,59 @@ defmodule Bonfire.Social.Graph.Aliases do
     with {:ok, target} <-
            Bonfire.Federate.ActivityPub.AdapterUtils.get_by_url_ap_id_or_username(target) do
       add(user, target, opts)
+    else
+      {:error, e} ->
+        warn(e, "could not find an AP actor, add as URL instead")
+        # add_link(user, target, "link", %{}, opts)
+        with %{} = media <-
+               maybe_apply(Bonfire.Files.Acts.URLPreviews, :maybe_fetch_and_save, [
+                 user,
+                 target,
+                 [
+                   update_existing: :force,
+                   type_fn: fn meta ->
+                     e(meta, "facebook", "og:site_name", nil) ||
+                       e(meta, "other", "expected-hostname", nil) ||
+                       e(meta, "wikibase", "publicationTitle", nil) || "link"
+                   end
+                 ]
+               ]) do
+          add(user, media, opts)
+        end
     end
   end
 
   def add(%{} = user, {:provider, provider, params}, opts) do
-    with {:ok, external_url} <- external_url(params),
+    meta = %{
+      metadata:
+        params
+        |> Enums.filter_empty(nil)
+    }
+
+    with {:ok, external_url} <- external_url(params) do
+      add_link(user, external_url, to_string(provider), meta, opts)
+    end
+  end
+
+  defp add_link(%{} = user, external_url, type, meta, opts) do
+    with {:error, :not_found} <- Bonfire.Files.Media.get_by_path(external_url),
+         # TODO: avoid storing access tokens in DB?
          {:ok, target} <-
            Bonfire.Files.Media.insert(
              user,
              external_url,
-             %{media_type: to_string(provider), size: 0},
-             %{
-               metadata:
-                 params
-                 |> Enums.filter_empty(nil)
-             }
-             |> debug
+             %{media_type: type, size: 0},
+             meta
            )
            |> debug do
       add(user, target, opts)
+    else
+      {:ok, %Bonfire.Files.Media{} = existing_media} ->
+        Bonfire.Files.Media.update(user, existing_media, meta)
+        ~> add(user, ..., opts)
+
+      e ->
+        error(e)
     end
   end
 
