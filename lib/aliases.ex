@@ -49,24 +49,49 @@ defmodule Bonfire.Social.Graph.Aliases do
   """
   def add(user, target, opts \\ [])
 
-  def add(%{} = user, %{} = target, opts) do
+  def add(%{} = user, target, opts) when is_struct(target) do
     with {:ok, result} <- do_add(user, target, opts) do
       # debug(result, "add or request result")
       {:ok, result}
     end
   end
 
-  def add(%{} = user, target, opts) do
+  def add(%{} = user, target, opts) when is_binary(target) do
     with {:ok, target} <-
            Bonfire.Federate.ActivityPub.AdapterUtils.get_by_url_ap_id_or_username(target) do
       add(user, target, opts)
     end
   end
 
-  # Notes for future refactor:
-  # * Make it pay attention to options passed in
-  # * When we start allowing to add things that aren't users, we might need to adjust the circles.
-  # * Figure out how to avoid the advance lookup and ensuing race condition.
+  def add(%{} = user, {:provider, provider, params}, opts) do
+    with {:ok, external_url} <- external_url(params),
+         {:ok, target} <-
+           Bonfire.Files.Media.insert(
+             user,
+             external_url,
+             %{media_type: to_string(provider), size: 0},
+             %{
+               metadata:
+                 params
+                 |> Enums.filter_empty(nil)
+             }
+             |> debug
+           )
+           |> debug do
+      add(user, target, opts)
+    end
+  end
+
+  defp external_url(%{"iss" => base_url, "sub" => external_id} = _params)
+       when is_binary(base_url) and is_binary(external_id) do
+    #  support ORCID.org
+    {:ok, "#{base_url}/#{external_id}"}
+  end
+
+  defp external_url(params) do
+    error(params, "dunno how to get URL from params")
+  end
+
   defp do_add(%user_struct{} = user, %{} = target, opts) do
     repo().transact_with(fn ->
       case create(user, target, opts) do
@@ -90,7 +115,7 @@ defmodule Bonfire.Social.Graph.Aliases do
       Edges.delete_by_both(user, Alias, target)
 
       # TODO: update AP user?
-      Integration.maybe_federate(user, :update, nil)
+      # Integration.maybe_federate(user, :update, user)
       # ap_publish_activity(user, :update, target)
     else
       error("Does not exist")
@@ -111,34 +136,44 @@ defmodule Bonfire.Social.Graph.Aliases do
   def all_by_subject(user, opts \\ []) do
     opts
     # |> Keyword.put_new(:current_user, user)
-    |> Keyword.put_new(:preload, :target)
+    |> Keyword.put_new(:preload, :object)
     |> query([subject: user], ...)
     |> repo().many()
   end
 
   def all_objects_by_subject(user, opts \\ []) do
     all_by_subject(user, opts)
-    |> Enum.map(&e(&1, :edge, :target, nil))
+    |> Enum.map(&e(&1, :edge, :object, nil))
   end
 
-  def all_by_object(user, opts \\ []) do
+  def all_by_object(object, opts \\ []) do
     opts
-    # |> Keyword.put_new(:current_user, user)
     |> Keyword.put_new(:preload, :subject)
-    |> query([target: user], ...)
+    |> query([object: object], ...)
     |> repo().many()
   end
 
-  def all_subjects_by_object(user, opts \\ []) do
-    all_by_object(user, opts)
+  def all_subjects_by_object(object, opts \\ [])
+
+  def all_subjects_by_object({:provider, provider, params}, opts) do
+    opts = opts ++ [skip_boundary_check: true]
+
+    external_url(params)
+    ~> Bonfire.Files.Media.one([path: ..., media_type: to_string(provider)], opts)
+    |> debug()
+    ~> all_subjects_by_object(opts)
+  end
+
+  def all_subjects_by_object(object, opts) do
+    all_by_object(object, opts)
     |> Enum.map(&e(&1, :edge, :subject, nil))
   end
 
   defp query_base(filters, opts) do
     filters = e(opts, :filters, []) ++ filters
 
-    Edges.query_parent(Alias, filters, opts)
-    |> query_filter(Keyword.drop(filters, [:target, :subject]))
+    Edges.query_parent(Alias, filters, debug(opts))
+    |> query_filter(Keyword.drop(filters, [:object, :subject]))
 
     # |> debug("follows query")
   end
@@ -147,21 +182,24 @@ defmodule Bonfire.Social.Graph.Aliases do
     query_base(filters, opts)
   end
 
-  def list_my_aliases(current_user, opts \\ []),
-    do:
-      list_aliases(
-        current_user,
-        Keyword.put(to_options(opts), :current_user, current_user)
-      )
+  def list_my_aliases(current_user, opts \\ []) do
+    to_options(opts)
+    |> Keyword.put(:current_user, current_user)
+    |> list_aliases(
+      current_user,
+      ...
+    )
+  end
 
   def list_aliases(user, opts \\ []) do
     # TODO: configurable boundaries for follows
-    opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object]
+    opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object_profile]
 
-    [subject: ulid(user), object_type: opts[:type]]
-    |> query(opts)
+    query([subject: ulid(user), object_type: opts[:type]], opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
     |> Integration.many(opts[:paginate], opts)
+    # follow pointers
+    |> repo().maybe_preload([edge: [:object]], opts)
   end
 
   def list_my_aliased(current_user, opts \\ []),
