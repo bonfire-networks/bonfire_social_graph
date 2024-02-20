@@ -114,26 +114,38 @@ defmodule Bonfire.Social.Graph.Aliases do
     }
 
     with {:ok, external_url} <- external_url(params) do
-      add_link(user, external_url, to_string(provider), meta, opts)
+      add_link(user, external_url, provider, meta, opts)
     end
   end
 
   defp add_link(%{} = user, external_url, type, meta, opts) do
+    trigger_fun = fn target ->
+      maybe_apply(
+        Config.get([__MODULE__, :triggers, :add_link, type]) |> debug,
+        :trigger,
+        [:add_link, user, target],
+        opts
+      )
+    end
+
     with {:error, :not_found} <- Bonfire.Files.Media.get_by_path(external_url),
          # TODO: avoid storing access tokens in DB?
          {:ok, target} <-
            Bonfire.Files.Media.insert(
              user,
              external_url,
-             %{media_type: type, size: 0},
+             %{media_type: to_string(type), size: 0},
              meta
            )
            |> debug do
+      trigger_fun.(target)
       add(user, target, opts)
     else
       {:ok, %Bonfire.Files.Media{} = existing_media} ->
-        Bonfire.Files.Media.update(user, existing_media, meta)
-        ~> add(user, ..., opts)
+        with {:ok, target} <- Bonfire.Files.Media.update(user, existing_media, meta) do
+          trigger_fun.(target)
+          add(user, target, opts)
+        end
 
       e ->
         error(e)
@@ -194,6 +206,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   def all_by_subject(user, opts \\ []) do
     opts
     # |> Keyword.put_new(:current_user, user)
+    |> Keyword.put_new(:skip_boundary_check, true)
     |> Keyword.put_new(:preload, :object)
     |> query([subject: user], ...)
     |> repo().many()
@@ -206,6 +219,7 @@ defmodule Bonfire.Social.Graph.Aliases do
 
   def all_by_object(object, opts \\ []) do
     opts
+    |> Keyword.put_new(:skip_boundary_check, true)
     |> Keyword.put_new(:preload, :subject)
     |> query([object: object], ...)
     |> repo().many()
