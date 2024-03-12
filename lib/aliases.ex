@@ -57,10 +57,17 @@ defmodule Bonfire.Social.Graph.Aliases do
   end
 
   def add(%{} = user, target, opts) when is_binary(target) do
+    opts =
+      Keyword.merge(opts,
+        return_html: true,
+        rel_me_urls: [URIs.url_path(user), URIs.canonical_url(user)]
+      )
+      |> debug("urllls")
+
     with {:ok, target} <-
            Bonfire.Federate.ActivityPub.AdapterUtils.get_by_url_ap_id_or_username(
              target,
-             opts ++ [return_html: true]
+             opts
            ) do
       add(user, target, opts)
     else
@@ -86,13 +93,12 @@ defmodule Bonfire.Social.Graph.Aliases do
            maybe_apply(Bonfire.Files.Acts.URLPreviews, :maybe_fetch_and_save, [
              user,
              target,
-             [
-               # true, # :force
-               update_existing: :force,
+             opts
+             |> Keyword.merge(
                fetch_fn: fetch_fn,
                type_fn: fn meta ->
                  # e(meta, "wikibase", "publicationTitle", nil) || 
-                 (e(meta, "facebook", "og:site_name", nil) ||
+                 (e(meta, "facebook", "site_name", nil) ||
                     e(meta, "oembed", "provider_name", nil) ||
                     e(meta, "other", "expected-hostname", nil) ||
                     URI.parse(target).host ||
@@ -100,7 +106,7 @@ defmodule Bonfire.Social.Graph.Aliases do
                  |> String.replace("www.", "")
                  |> String.replace_trailing(".com", "")
                end
-             ]
+             )
            ]) do
       add(user, media, opts)
     end
@@ -108,9 +114,8 @@ defmodule Bonfire.Social.Graph.Aliases do
 
   def add(%{} = user, {:provider, provider, params}, opts) do
     meta = %{
-      metadata:
-        params
-        |> Enums.filter_empty(nil)
+      metadata: %{provider => Enums.filter_empty(params, nil), verified: true}
+      # marking OpenID/oAuth links as verified
     }
 
     with {:ok, external_url} <- external_url(params) do
