@@ -348,6 +348,21 @@ defmodule Bonfire.Social.Graph.Aliases do
     end
   end
 
+  def also_known_as?(local_ap_id, target) when is_binary(local_ap_id) do
+    with {:ok, %{data: data}} <-
+           ActivityPub.Actor.get_cached(pointer: target)
+           |> debug("aliased actor") do
+      ActivityPub.Actor.also_known_as?(
+        local_ap_id
+        |> debug("local_ap_id"),
+        data
+      )
+    end
+  end
+
+  def also_known_as?(%{} = character, target),
+    do: also_known_as?(Bonfire.Common.URIs.canonical_url(character), target)
+
   def ap_publish_activity(subject, :move, target) do
     move(subject, target)
   end
