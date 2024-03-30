@@ -1,6 +1,6 @@
 defmodule Bonfire.Social.Graph.Fake do
   import Bonfire.Common.Simulation
-  import Bonfire.Me.Fake
+  alias Bonfire.Me.Fake, as: FakeMe
   # alias Bonfire.Common.Utils
   alias Bonfire.Posts
   alias Bonfire.Social.Graph.Follows
@@ -15,8 +15,8 @@ defmodule Bonfire.Social.Graph.Fake do
   @username "test"
 
   def fake_follow!() do
-    me = fake_user!(@username)
-    followed = fake_user!()
+    me = FakeMe.fake_user!(@username)
+    followed = FakeMe.fake_user!()
     {:ok, follow} = Follows.follow(me, followed)
 
     follow
@@ -24,14 +24,14 @@ defmodule Bonfire.Social.Graph.Fake do
 
   def fake_incoming_follow!() do
     me = fake_remote_user!()
-    followed = fake_user!(@username)
+    followed = FakeMe.fake_user!(@username)
     {:ok, follow} = Follows.follow(me, followed)
 
     follow
   end
 
   def fake_outgoing_follow!() do
-    me = fake_user!(@username)
+    me = FakeMe.fake_user!(@username)
     followed = fake_remote_user!()
     {:ok, follow} = Follows.follow(me, followed)
 
