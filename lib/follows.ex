@@ -10,7 +10,7 @@ defmodule Bonfire.Social.Graph.Follows do
   alias Bonfire.Social.Edges
   alias Bonfire.Social.FeedActivities
   # alias Bonfire.Social.Feeds
-  alias Bonfire.Social.Integration
+  alias Bonfire.Social
   alias Bonfire.Social.Graph.Requests
 
   alias Bonfire.Social.LivePush
@@ -72,7 +72,7 @@ defmodule Bonfire.Social.Graph.Follows do
         do_follow(follower, object, opts)
 
       # Note: we now rely on Boundaries instead of making an arbitrary difference here
-      # if Integration.is_local?(follower) do
+      # if Social.is_local?(follower) do
       # info("remote following local, attempting a request")
       # Requests.request(follower, Follow, object, opts)
       # else
@@ -81,7 +81,7 @@ defmodule Bonfire.Social.Graph.Follows do
       # end
 
       {:remote, object} ->
-        if Integration.is_local?(follower) do
+        if Social.is_local?(follower) do
           info(
             "local following remote, attempting a request instead of follow (which *may* be auto-accepted by the remote instance)"
           )
@@ -213,7 +213,7 @@ defmodule Bonfire.Social.Graph.Follows do
              do: Bonfire.Social.Graph.graph_add(user, object, Follow)
 
           if opts[:incoming] != true,
-            do: Integration.maybe_federate_and_gift_wrap_activity(user, follow),
+            do: Social.maybe_federate_and_gift_wrap_activity(user, follow),
             else: {:ok, follow}
 
         e ->
@@ -291,7 +291,7 @@ defmodule Bonfire.Social.Graph.Follows do
       if opts[:incoming] != true,
         do: ap_publish_activity(user, :delete, object)
 
-      # Integration.maybe_federate(user, :unfollow, object)
+      # Social.maybe_federate(user, :unfollow, object)
 
       # end
     else
@@ -416,7 +416,7 @@ defmodule Bonfire.Social.Graph.Follows do
     |> query(opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_followed_profile_only(opts)
-    |> Integration.many(opts[:paginate], opts)
+    |> Social.many(opts[:paginate], opts)
   end
 
   def list_my_followers(current_user, opts \\ []),
@@ -433,7 +433,7 @@ defmodule Bonfire.Social.Graph.Follows do
     |> query(opts)
     |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_follower_profile_only(opts)
-    |> Integration.many(opts[:paginate], opts)
+    |> Social.many(opts[:paginate], opts)
   end
 
   # defp maybe_with_follower_profile_only(q, true),
@@ -454,7 +454,7 @@ defmodule Bonfire.Social.Graph.Follows do
     object = repo().maybe_preload(object, [:peered, created: [creator: :peered]])
     # |> info()
 
-    if Integration.is_local?(object) do
+    if Social.is_local?(object) do
       {:local, object}
     else
       {:remote, object}

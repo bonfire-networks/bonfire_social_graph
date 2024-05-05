@@ -8,7 +8,7 @@ defmodule Bonfire.Social.Graph.Requests do
   alias Bonfire.Social.Edges
   # alias Bonfire.Social.FeedActivities
   # alias Bonfire.Social.Feeds
-  alias Bonfire.Social.Integration
+  alias Bonfire.Social
 
   # alias Bonfire.Data.Identity.User
   # alias Ecto.Changeset
@@ -174,7 +174,7 @@ defmodule Bonfire.Social.Graph.Requests do
     |> many(opts)
   end
 
-  def many(query, opts), do: Integration.many(query, opts[:paginate] || false, opts)
+  def many(query, opts), do: Social.many(query, opts[:paginate] || false, opts)
 
   # defp maybe_with_requester_profile_only(q, true),
   #   do: where(q, [requester_profile: p], not is_nil(p.id))
@@ -211,7 +211,7 @@ defmodule Bonfire.Social.Graph.Requests do
     case create(requester, type, object, opts) do
       {:ok, request} ->
         if opts[:incoming] != true,
-          do: Integration.maybe_federate_and_gift_wrap_activity(requester, request),
+          do: Social.maybe_federate_and_gift_wrap_activity(requester, request),
           else: {:ok, request}
 
       e ->
@@ -227,9 +227,9 @@ defmodule Bonfire.Social.Graph.Requests do
   defp maybe_already(requester, type, object) do
     case get(requester, type, object, skip_boundary_check: true) do
       {:ok, request} ->
-        if Integration.is_local?(requester) and !Integration.is_local?(object) do
+        if Social.is_local?(requester) and !Social.is_local?(object) do
           info(type, "was already requested, but will attempt re-federating the request")
-          Integration.maybe_federate_and_gift_wrap_activity(requester, request)
+          Social.maybe_federate_and_gift_wrap_activity(requester, request)
         else
           debug(type, "was already requested")
           {:ok, request}
@@ -270,7 +270,7 @@ defmodule Bonfire.Social.Graph.Requests do
   def ap_publish_activity(subject, {:accept, request}, follow) do
     request_id = ulid(request)
 
-    with false <- Integration.is_local?(e(follow.edge, :subject, nil)),
+    with false <- Social.is_local?(e(follow.edge, :subject, nil)),
          {:ok, object_actor} <-
            ActivityPub.Actor.get_cached(
              pointer: e(follow.edge, :object, nil) || follow.edge.object_id

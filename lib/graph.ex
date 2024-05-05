@@ -1,4 +1,6 @@
 defmodule Bonfire.Social.Graph do
+  @moduledoc "./README.md" |> File.stream!() |> Enum.drop(1) |> Enum.join()
+
   use GenServer
   use Arrows
   use Bonfire.Common.Utils

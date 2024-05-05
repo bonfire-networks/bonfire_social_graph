@@ -9,7 +9,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   alias Bonfire.Social.Edges
   alias Bonfire.Social.FeedActivities
   # alias Bonfire.Social.Feeds
-  alias Bonfire.Social.Integration
+  alias Bonfire.Social
   alias Bonfire.Social.Graph.Follows
 
   alias Bonfire.Social.LivePush
@@ -171,7 +171,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     repo().transact_with(fn ->
       case create(user, target, opts) do
         {:ok, add} ->
-          Integration.maybe_federate(user, :update, add)
+          Social.maybe_federate(user, :update, add)
 
           {:ok, add}
 
@@ -190,7 +190,7 @@ defmodule Bonfire.Social.Graph.Aliases do
       Edges.delete_by_both(user, Alias, target)
 
       # TODO: update AP user?
-      # Integration.maybe_federate(user, :update, user)
+      # Social.maybe_federate(user, :update, user)
       # ap_publish_activity(user, :update, target)
     else
       error("Does not exist")
@@ -274,7 +274,7 @@ defmodule Bonfire.Social.Graph.Aliases do
 
     query([subject: ulid(user), object_type: opts[:type]], opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
-    |> Integration.many(opts[:paginate], opts)
+    |> Social.many(opts[:paginate], opts)
     # follow pointers
     |> repo().maybe_preload([edge: [:object]], opts)
   end
@@ -293,7 +293,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     |> query(opts)
     |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_user_profile_only(opts)
-    |> Integration.many(opts[:paginate], opts)
+    |> Social.many(opts[:paginate], opts)
   end
 
   # defp maybe_with_user_profile_only(q, true),
@@ -407,7 +407,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   def move_following(origin, target) do
     Follows.all_subjects_by_object(origin)
     # |> repo().maybe_preload(character: :peered)
-    # |> Enum.filter(&Integration.is_local?/1)
+    # |> Enum.filter(&Social.is_local?/1)
     |> Enum.map(fn third_party_subject ->
       with {:ok, _} <- Follows.follow(third_party_subject, target),
            {:ok, _} <- Follows.unfollow(third_party_subject, origin) do
