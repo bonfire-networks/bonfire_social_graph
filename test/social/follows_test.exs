@@ -1,5 +1,5 @@
 defmodule Bonfire.Social.Graph.FollowsTest do
-  use Bonfire.Social.DataCase, async: true
+  use Bonfire.Social.Graph.DataCase, async: true
 
   alias Bonfire.Social.Graph.Follows
   alias Bonfire.Social.FeedActivities
