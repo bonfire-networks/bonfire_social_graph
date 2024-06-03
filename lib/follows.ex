@@ -272,11 +272,14 @@ defmodule Bonfire.Social.Graph.Follows do
 
   def unfollow(user, %{} = object, opts) do
     if following?(user, object) do
-      Edges.delete_by_both(user, Follow, object)
+      deleted_edges =
+        Edges.delete_by_both(user, Follow, object)
+        |> debug("deleted")
+
       # with [_id] <- Edges.delete_by_both(user, Follow, object) do
 
       # delete the like activity & feed entries
-      Activities.delete_by_subject_verb_object(user, :follow, object)
+      deleted_activities = Activities.delete_by_subject_verb_object(user, :follow, object)
 
       invalidate_followed_outboxes_cache(id(user))
 
@@ -289,7 +292,8 @@ defmodule Bonfire.Social.Graph.Follows do
       Bonfire.Social.Graph.graph_remove(user, object, Follow)
 
       if opts[:incoming] != true,
-        do: ap_publish_activity(user, :delete, object)
+        do: ap_publish_activity(user, :delete, object),
+        else: deleted_edges || deleted_activities
 
       # Social.maybe_federate(user, :unfollow, object)
 
@@ -584,27 +588,34 @@ defmodule Bonfire.Social.Graph.Follows do
   def ap_receive_activity(
         followed,
         %{data: %{"type" => "Accept"} = _data} = _activity,
-        %{data: %{"actor" => follower}} = _object
+        %{data: %{"actor" => ap_follower}} = _object
       ) do
-    info("Accept incoming request")
+    info(followed, "Accept incoming request")
 
     with {:ok, follower} <-
-           Bonfire.Federate.ActivityPub.AdapterUtils.get_or_fetch_character_by_ap_id(follower),
-         {:ok, request} <-
-           Requests.get(follower, Follow, followed, skip_boundary_check: true),
-         {:ok, accepted} <- accept(request, current_user: followed, incoming: true) do
-      debug(accepted, "acccccepted")
-      {:ok, accepted}
+           Bonfire.Federate.ActivityPub.AdapterUtils.get_or_fetch_character_by_ap_id(ap_follower) do
+      with {:ok, request} <-
+             Requests.get(follower, Follow, followed, skip_boundary_check: true),
+           {:ok, accepted} <- accept(request, current_user: followed, incoming: true) do
+        debug(accepted, "acccccepted")
+        {:ok, accepted}
+      else
+        {:error, :not_found} ->
+          case following?(follower, followed) do
+            false ->
+              error("No such Follow")
+
+            true ->
+              # already followed
+              {:ok, nil}
+          end
+
+        e ->
+          error(e)
+      end
     else
       {:error, :not_found} ->
-        case following?(follower, followed) do
-          false ->
-            error("No such Follow")
-
-          true ->
-            # already followed
-            {:ok, nil}
-        end
+        error(ap_follower, "No actor found for the follower")
 
       e ->
         error(e)
