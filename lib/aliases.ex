@@ -12,7 +12,6 @@ defmodule Bonfire.Social.Graph.Aliases do
   alias Bonfire.Social
   alias Bonfire.Social.Graph.Follows
 
-  alias Bonfire.Social.LivePush
   # alias Bonfire.Data.Identity.User
   # alias Ecto.Changeset
   # alias Needle.Changesets

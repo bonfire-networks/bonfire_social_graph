@@ -13,7 +13,6 @@ defmodule Bonfire.Social.Graph.Follows do
   alias Bonfire.Social
   alias Bonfire.Social.Graph.Requests
 
-  alias Bonfire.Social.LivePush
   # alias Bonfire.Data.Identity.User
   # alias Ecto.Changeset
   # alias Needle.Changesets
@@ -180,13 +179,12 @@ defmodule Bonfire.Social.Graph.Follows do
           invalidate_followed_outboxes_cache(id(user))
 
           # FIXME: should not compute feed ids twice
-          LivePush.push_activity_object(
+          maybe_apply(Bonfire.UI.Social.LivePush, :push_activity_object, [
             FeedActivities.get_feed_ids(opts[:to_feeds]),
             follow,
             object,
-            push_to_thread: false,
-            notify: true
-          )
+            [push_to_thread: false, notify: true]
+          ])
 
           follower_type = Types.object_type(user)
           object_type = Types.object_type(object)
