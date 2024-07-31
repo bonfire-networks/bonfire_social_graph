@@ -16,45 +16,53 @@ defmodule Bonfire.Social.Graph.Import do
   alias Bonfire.Boundaries.Blocks
   alias Bonfire.Federate.ActivityPub.AdapterUtils
 
+  @doc """
+  Import follows, ghosts, silences, or blocks from a CSV file.
+
+  ## Examples
+
+      iex> import_from_csv_file(:follows, user, "path/to/file.csv")
+
+  """
   def import_from_csv_file(:follows, user, path), do: follows_from_csv_file(user, path)
   def import_from_csv_file(:ghosts, user, path), do: ghosts_from_csv_file(user, path)
   def import_from_csv_file(:silences, user, path), do: silences_from_csv_file(user, path)
   def import_from_csv_file(:blocks, user, path), do: blocks_from_csv_file(user, path)
   def import_from_csv_file(other, user, path), do: error("Please select a valid type of import")
 
-  def follows_from_csv_file(user, path) do
+  defp follows_from_csv_file(user, path) do
     follows_from_csv(user, read_file(path))
     # TODO: delete file
   end
 
-  def follows_from_csv(user, csv) do
+  defp follows_from_csv(user, csv) do
     process_csv("follows_import", user, csv)
   end
 
-  def ghosts_from_csv_file(user, path) do
+  defp ghosts_from_csv_file(user, path) do
     ghosts_from_csv(user, read_file(path))
     # TODO: delete file
   end
 
-  def ghosts_from_csv(user, csv) do
+  defp ghosts_from_csv(user, csv) do
     process_csv("ghosts_import", user, csv)
   end
 
-  def silences_from_csv_file(user, path) do
+  defp silences_from_csv_file(user, path) do
     silences_from_csv(user, read_file(path))
     # TODO: delete file
   end
 
-  def silences_from_csv(user, csv) do
+  defp silences_from_csv(user, csv) do
     process_csv("silences_import", user, csv)
   end
 
-  def blocks_from_csv_file(user, path) do
+  defp blocks_from_csv_file(user, path) do
     blocks_from_csv(user, read_file(path))
     # TODO: delete file
   end
 
-  def blocks_from_csv(user, csv) do
+  defp blocks_from_csv(user, csv) do
     process_csv("blocks_import", user, csv)
   end
 
@@ -134,6 +142,15 @@ defmodule Bonfire.Social.Graph.Import do
 
   defp job(spec, worker_args \\ []), do: new(worker_args, spec)
 
+  @doc """
+  Perform the queued job based on the operation and user.
+
+  ## Examples
+
+      iex> perform(%{args: %{"op" => "follows_import", "user_id" => "user1", "identifier" => "id1"}})
+      :ok
+
+  """
   def perform(%{args: %{"op" => op, "user_id" => user_id, "identifier" => identifier} = _args}) do
     # debug(args, op)
     with {:ok, user} <- Users.by_username(user_id) do
@@ -141,6 +158,14 @@ defmodule Bonfire.Social.Graph.Import do
     end
   end
 
+  @doc """
+  Perform an import operation for the user.
+
+  ## Examples
+
+      iex> perform("follows_import", user, "identifier")
+
+  """
   @spec perform(atom(), User.t(), list()) :: :ok | list() | {:error, any()}
   def perform("silences_import" = op, %User{} = user, identifier) do
     with {:ok, %{} = silence} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),

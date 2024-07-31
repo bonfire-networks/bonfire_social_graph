@@ -1,4 +1,12 @@
 defmodule Bonfire.Social.Graph.Aliases do
+  @moduledoc """
+  Implements aliases (i.e. "also known as") for characters in Bonfire.
+
+  This module provides functionality for managing aliases, including adding,
+  removing, and querying aliases. It also implements ActivityPub federation
+  for the "Move" activity.
+  """
+
   alias Bonfire.Data.Identity.Alias
 
   # alias Bonfire.Me.Boundaries
@@ -32,11 +40,29 @@ defmodule Bonfire.Social.Graph.Aliases do
       "Move"
     ]
 
+  @doc """
+  Checks if an alias relationship exists between a subject and a target.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.exists?(subject, target)
+      true
+
+  """
   # TODO: privacy
   def exists?(subject, target),
     # current_user: subject)
     do: Edges.exists?(__MODULE__, subject, target, skip_boundary_check: true)
 
+  @doc """
+  Retrieves an alias between a subject and an object, if one exists
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.get(subject, object)
+      {:ok, %Alias{}}
+
+  """
   def get(subject, object, opts \\ []),
     do: Edges.get(__MODULE__, subject, object, opts)
 
@@ -44,7 +70,13 @@ defmodule Bonfire.Social.Graph.Aliases do
     do: Edges.get!(__MODULE__, subject, object, opts)
 
   @doc """
-  Alias someone/something. 
+  Adds an alias to a user, linking it to a another character.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.add(user, target)
+      {:ok, %Alias{}}
+
   """
   def add(user, target, opts \\ [])
 
@@ -184,6 +216,14 @@ defmodule Bonfire.Social.Graph.Aliases do
       get(user, target, skip_boundary_check: true)
   end
 
+  @doc """
+  Removes an alias relationship between a user and a target.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.remove(user, target)
+
+  """
   def remove(user, %{} = target) do
     if exists?(user, target) do
       Edges.delete_by_both(user, Alias, target)
@@ -207,6 +247,16 @@ defmodule Bonfire.Social.Graph.Aliases do
   end
 
   # TODO: abstract the next few functions into Edges
+
+  @doc """
+  Retrieves all aliases for a given subject.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.all_by_subject(user)
+      [%Alias{}, ...]
+
+  """
   def all_by_subject(user, opts \\ []) do
     opts
     # |> Keyword.put_new(:current_user, user)
@@ -216,11 +266,29 @@ defmodule Bonfire.Social.Graph.Aliases do
     |> repo().many()
   end
 
+  @doc """
+  Retrieves all aliased objects for a given subject.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.all_objects_by_subject(user)
+      [%Object{}, ...]
+
+  """
   def all_objects_by_subject(user, opts \\ []) do
     all_by_subject(user, opts)
     |> Enum.map(&e(&1, :edge, :object, nil))
   end
 
+  @doc """
+  Retrieves all aliases for a given object (i.e target).
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.all_by_object(object)
+      [%Alias{}, ...]
+
+  """
   def all_by_object(object, opts \\ []) do
     opts
     |> Keyword.put_new(:skip_boundary_check, true)
@@ -229,6 +297,15 @@ defmodule Bonfire.Social.Graph.Aliases do
     |> repo().many()
   end
 
+  @doc """
+  Retrieves all alias subjects for a given object (i.e target).
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.all_subjects_by_object(object)
+      [%Subject{}, ...]
+
+  """
   def all_subjects_by_object(object, opts \\ [])
 
   def all_subjects_by_object({:provider, provider, params}, opts) do
@@ -258,6 +335,15 @@ defmodule Bonfire.Social.Graph.Aliases do
     query_base(filters, opts)
   end
 
+  @doc """
+  Lists aliases for the current user.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.list_my_aliases(current_user)
+      [%Alias{}, ...]
+
+  """
   def list_my_aliases(current_user, opts \\ []) do
     to_options(opts)
     |> Keyword.put(:current_user, current_user)
@@ -267,6 +353,15 @@ defmodule Bonfire.Social.Graph.Aliases do
     )
   end
 
+  @doc """
+  Lists aliases for a given user.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.list_aliases(user)
+      [%Alias{}, ...]
+
+  """
   def list_aliases(user, opts \\ []) do
     # TODO: configurable boundaries for follows
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object_profile]
@@ -278,6 +373,15 @@ defmodule Bonfire.Social.Graph.Aliases do
     |> repo().maybe_preload([edge: [:object]], opts)
   end
 
+  @doc """
+  Lists entities who aliased the current user.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.list_my_aliased(current_user)
+      [%AliasedEntity{}, ...]
+
+  """
   def list_my_aliased(current_user, opts \\ []),
     do:
       list_aliased(
@@ -285,6 +389,15 @@ defmodule Bonfire.Social.Graph.Aliases do
         Keyword.put(to_options(opts), :current_user, current_user)
       )
 
+  @doc """
+  Lists entities who aliased a a given user.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.list_aliased(user)
+      [%AliasedEntity{}, ...]
+
+  """
   def list_aliased(user, opts \\ []) do
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :subject]
 
@@ -309,13 +422,22 @@ defmodule Bonfire.Social.Graph.Aliases do
     insert(user, target, opts)
   end
 
-  def insert(subject, object, options) do
+  defp insert(subject, object, options) do
     Edges.changeset_base(Alias, subject, object, options)
     |> Edges.insert(subject, object)
   end
 
   ### ActivityPub integration
 
+  @doc """
+  Initiates a move operation for migrating a local user to another instance.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.move(subject, target)
+      {:ok, :moved}
+
+  """
   def move(subject, %ActivityPub.Actor{} = target) do
     target = repo().maybe_preload(target, :edge)
 
@@ -347,6 +469,18 @@ defmodule Bonfire.Social.Graph.Aliases do
     end
   end
 
+  @doc """
+  Checks if a local user is also known as the target.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.also_known_as?("http://example.com/user", target)
+      true
+
+      iex> Bonfire.Social.Graph.Aliases.also_known_as?(%User{}, target)
+      true
+
+  """
   def also_known_as?(local_ap_id, target) when is_binary(local_ap_id) do
     with {:ok, %{data: data}} <-
            ActivityPub.Actor.get_cached(pointer: target)
@@ -362,6 +496,14 @@ defmodule Bonfire.Social.Graph.Aliases do
   def also_known_as?(%{} = character, target),
     do: also_known_as?(Bonfire.Common.URIs.canonical_url(character), target)
 
+  @doc """
+  Publishes an ActivityPub activity for a move operation.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.ap_publish_activity(subject, :move, target)
+
+  """
   def ap_publish_activity(subject, :move, target) do
     move(subject, target)
   end
@@ -373,6 +515,15 @@ defmodule Bonfire.Social.Graph.Aliases do
     # TODO: send an Update activity to target
   end
 
+  @doc """
+  Processes an incoming ActivityPub Move activity.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Aliases.ap_receive_activity(subject, activity, origin_object)
+      {:ok, :moved}
+
+  """
   def ap_receive_activity(
         subject,
         %{data: %{"type" => "Move", "target" => target} = data} = _activity,
@@ -403,7 +554,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     end
   end
 
-  def move_following(origin, target) do
+  defp move_following(origin, target) do
     Follows.all_subjects_by_object(origin)
     # |> repo().maybe_preload(character: :peered)
     # |> Enum.filter(&Social.is_local?/1)

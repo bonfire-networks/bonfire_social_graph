@@ -1,4 +1,8 @@
 defmodule Bonfire.Social.Graph.Follows do
+  @moduledoc """
+  Module for handling follow relationships in the Bonfire social graph.
+  """
+
   alias Bonfire.Data.Social.Follow
   alias Bonfire.Data.Social.Request
 
@@ -11,7 +15,7 @@ defmodule Bonfire.Social.Graph.Follows do
   alias Bonfire.Social.FeedActivities
   # alias Bonfire.Social.Feeds
   alias Bonfire.Social
-  alias Bonfire.Social.Graph.Requests
+  alias Bonfire.Social.Requests
 
   # alias Bonfire.Data.Identity.User
   # alias Ecto.Changeset
@@ -38,19 +42,72 @@ defmodule Bonfire.Social.Graph.Follows do
       {"Reject", "Follow"}
     ]
 
+  @doc """
+  Checks if a subject is following an object.
+
+  ## Parameters
+
+  - `subject`: The subject (follower)
+  - `object`: The object (followed)
+
+  ## Returns
+
+  Boolean indicating if the subject is following the object.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.following?(user, profile)
+      true
+  """
+
   # TODO: privacy
   def following?(subject, object),
     # current_user: subject)
     do: Edges.exists?(__MODULE__, subject, object, verbs: [:follow], skip_boundary_check: true)
 
+  @doc """
+  Checks if a follow request has been made.
+
+  ## Parameters
+
+  - `subject`: The subject (requester)
+  - `object`: The object (requested)
+
+  ## Returns
+
+  Boolean indicating if a follow request exists.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.requested?(user, profile)
+      true
+  """
   def requested?(subject, object),
     do: Requests.requested?(subject, Follow, object)
 
   @doc """
-  Follow someone/something. In case of success, publishes to feeds and federates.
+  Follows someone or something. In case of success, publishes to feeds and federates.
 
   If the user is not permitted to follow the object, or the object is
-  a remote actor, will instead request to follow.
+  a remote actor, it will instead send a request to follow.
+
+  ## Parameters
+
+  - `user`: The user who wants to follow
+  - `object`: The object to be followed
+  - `opts`: Additional options
+
+  ## Returns
+
+  `{:ok, result}` on success, `{:error, reason}` on failure.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.follow(me, user2)
+      {:ok, %Follow{}}
+
+      iex> Bonfire.Social.Graph.Follows.follow(me, user3)
+      {:ok, %Request{}}
   """
   def follow(user, object, opts \\ [])
 
@@ -227,7 +284,20 @@ defmodule Bonfire.Social.Graph.Follows do
 
   @doc """
   Accepts a follow request, publishes to feeds and federates.
-  Parameters are the requester plus the subject as current_user
+
+  ## Parameters
+
+  - `subject`: The requester
+  - `opts`: Additional options including the current user
+
+  ## Returns
+
+  `{:ok, follow}` on success, `{:error, reason}` on failure.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.accept_from(requester, current_user: acceptor)
+      {:ok, %Follow{}}
   """
   def accept_from(subject, opts) do
     Requests.get(subject, Follow, current_user_required!(opts), opts)
@@ -237,7 +307,20 @@ defmodule Bonfire.Social.Graph.Follows do
 
   @doc """
   Accepts a follow request, publishes to feeds and federates.
-  Parameter are a Request (or its ID) plus the subject as current_user
+
+  ## Parameters
+
+  - `request`: A `Request` struct or its ID
+  - `opts`: Additional options including the current user
+
+  ## Returns
+
+  `{:ok, follow}` on success, `{:error, reason}` on failure.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.accept(request, current_user: acceptor)
+      {:ok, %Follow{}}
   """
   def accept(request, opts) do
     debug(opts, "opts")
@@ -266,6 +349,24 @@ defmodule Bonfire.Social.Graph.Follows do
     end)
   end
 
+  @doc """
+  Unfollows someone or something.
+
+  ## Parameters
+
+  - `user`: The user who wants to unfollow
+  - `object`: The object to be unfollowed
+  - `opts`: Additional options
+
+  ## Returns
+
+  Result of the unfollow operation.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.unfollow(me, user2)
+      {:ok, deleted_follow}
+  """
   def unfollow(user, object, opts \\ [])
 
   def unfollow(user, %{} = object, opts) do
@@ -315,17 +416,73 @@ defmodule Bonfire.Social.Graph.Follows do
     end
   end
 
+  @doc """
+  Ignores a follow request.
+
+  ## Parameters
+
+  - `request`: The request to ignore
+  - `opts`: Additional options
+
+  ## Returns
+
+  Result of the ignore operation.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.ignore(request, current_user: user)
+      {:ok, ignored_request}
+  """
   def ignore(request, opts) do
     Requests.ignore(request, opts)
   end
 
+  @doc """
+  Gets a follow relationship between a subject and an object, if one exists.
+
+  ## Parameters
+
+  - `subject`: The subject (follower)
+  - `object`: The object (followed)
+  - `opts`: Additional options
+
+  ## Returns
+
+  `{:ok, follow}` if found, `{:error, :not_found}` otherwise.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.get(user, profile)
+      {:ok, %Follow{}}
+  """
   def get(subject, object, opts \\ []),
     do: Edges.get(__MODULE__, subject, object, opts)
 
+  @doc """
+    Gets a follow relationship between a subject and an object, raising an error if not found.
+  """
   def get!(subject, object, opts \\ []),
     do: Edges.get!(__MODULE__, subject, object, opts)
 
   # TODO: abstract the next few functions into Edges
+
+  @doc """
+  Lists all follows by a subject.
+
+  ## Parameters
+
+  - `user`: The user whose follows to list
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of follows.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.all_by_subject(user)
+      [%Follow{}, ...]
+  """
   def all_by_subject(user, opts \\ []) do
     opts
     # |> Keyword.put_new(:current_user, user)
@@ -334,11 +491,45 @@ defmodule Bonfire.Social.Graph.Follows do
     |> repo().many()
   end
 
+  @doc """
+  Lists all objects followed by a subject.
+
+  ## Parameters
+
+  - `user`: The user whose followed objects to list
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of followed objects.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.all_objects_by_subject(user)
+      [%FollowedObject{}, ...]
+  """
   def all_objects_by_subject(user, opts \\ []) do
     all_by_subject(user, opts)
     |> Enum.map(&e(&1, :edge, :object, nil))
   end
 
+  @doc """
+  Lists all follows for an object.
+
+  ## Parameters
+
+  - `user`: The object whose followers to list
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of follows.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.all_by_object(user)
+      [%Follow{}, ...]
+  """
   def all_by_object(user, opts \\ []) do
     opts
     # |> Keyword.put_new(:current_user, user)
@@ -347,11 +538,48 @@ defmodule Bonfire.Social.Graph.Follows do
     |> repo().many()
   end
 
+  @doc """
+  Lists all subjects following an object.
+
+  ## Parameters
+
+  - `user`: The object whose followers to list
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of follower subjects.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.all_subjects_by_object(user)
+      [%FollowerSubject{}, ...]
+  """
   def all_subjects_by_object(user, opts \\ []) do
     all_by_object(user, opts)
     |> Enum.map(&e(&1, :edge, :subject, nil))
   end
 
+  @doc """
+  Lists all followed outboxes for a user.
+
+  ## Parameters
+
+  - `user`: The user whose followed outboxes to list
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of followed outbox IDs.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.all_followed_outboxes(user)
+      ["outbox_id_1", ...]
+
+      iex> Bonfire.Social.Graph.Follows.all_followed_outboxes(user, include_followed_categories: true)
+      ["outbox_id_1", "category_outbox_id_1", ...]
+  """
   def all_followed_outboxes(user, opts \\ []) do
     include_followed_categories = opts[:include_followed_categories]
 
@@ -362,7 +590,7 @@ defmodule Bonfire.Social.Graph.Follows do
     )
   end
 
-  def invalidate_followed_outboxes_cache(user) do
+  defp invalidate_followed_outboxes_cache(user) do
     Cache.remove("my_followed:true:#{id(user)}")
     Cache.remove("my_followed:false:#{id(user)}")
   end
@@ -393,6 +621,26 @@ defmodule Bonfire.Social.Graph.Follows do
     # |> debug("follows query")
   end
 
+  @doc """
+  Queries follows based on filters and options.
+
+  ## Parameters
+
+  - `filters`: List of filters to apply to the query
+  - `opts`: Additional query options
+
+  ## Returns
+
+  An Ecto query for follows.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.query([my: :object], current_user: user)
+      # following
+
+      iex> Bonfire.Social.Graph.Follows.query([my: :followers], current_user: user)
+      # followers
+  """
   def query([my: :object], opts),
     do: query([subject: current_user_required!(opts)], opts)
 
@@ -403,6 +651,23 @@ defmodule Bonfire.Social.Graph.Follows do
     query_base(filters, opts)
   end
 
+  @doc """
+  Lists followed objects for the current user.
+
+  ## Parameters
+
+  - `current_user`: The current user
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of followed objects.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.list_my_followed(current_user)
+      [%Object{}, ...]
+  """
   def list_my_followed(current_user, opts \\ []),
     do:
       list_followed(
@@ -410,6 +675,23 @@ defmodule Bonfire.Social.Graph.Follows do
         Keyword.put(to_options(opts), :current_user, current_user)
       )
 
+  @doc """
+  Lists followed objects for a given user.
+
+  ## Parameters
+
+  - `user`: The user whose followed objects to list
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of followed objects.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.list_followed(user)
+      [%Object{}, ...]
+  """
   def list_followed(user, opts \\ []) do
     # TODO: configurable boundaries for follows
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object]
@@ -421,6 +703,23 @@ defmodule Bonfire.Social.Graph.Follows do
     |> Social.many(opts[:paginate], opts)
   end
 
+  @doc """
+  Lists followers for the current user.
+
+  ## Parameters
+
+  - `current_user`: The current user
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of followers.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.list_my_followers(current_user)
+      [%User{}, ...]
+  """
   def list_my_followers(current_user, opts \\ []),
     do:
       list_followers(
@@ -428,6 +727,23 @@ defmodule Bonfire.Social.Graph.Follows do
         Keyword.put(to_options(opts), :current_user, current_user)
       )
 
+  @doc """
+  Lists followers for a given user.
+
+  ## Parameters
+
+  - `user`: The user whose followers to list
+  - `opts`: Additional options
+
+  ## Returns
+
+  List of followers.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.list_followers(user)
+      [%User{}, ...]
+  """
   def list_followers(user, opts \\ []) do
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :subject]
 
@@ -480,6 +796,24 @@ defmodule Bonfire.Social.Graph.Follows do
 
   ### ActivityPub integration
 
+  @doc """
+  Publishes an ActivityPub activity for a follow-related action.
+
+  ## Parameters
+
+  - `subject`: The subject of the activity
+  - `verb`: The verb of the activity (e.g., :delete)
+  - `follow`: The follow object or ID
+
+  ## Returns
+
+  `{:ok, activity}` on success, `{:error, reason}` on failure.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.ap_publish_activity(user, :delete, follow)
+      {:ok, %ActivityPub.Activity{}}
+  """
   def ap_publish_activity(subject, :delete, %Follow{edge: edge}) do
     ap_publish_activity(
       subject || e(edge, :subject, nil) || edge.subject_id,
@@ -532,6 +866,24 @@ defmodule Bonfire.Social.Graph.Follows do
     end
   end
 
+  @doc """
+  Receives and processes an ActivityPub activity related to follows.
+
+  ## Parameters
+
+  - `follower`: The follower
+  - `activity`: The ActivityPub activity
+  - `object`: The object of the activity
+
+  ## Returns
+
+  `{:ok, result}` on success, `{:ignore, reason}` on failure or when ignored.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.ap_receive_activity(follower, activity, object)
+      {:ok, %Follow{}}
+  """
   def ap_receive_activity(
         follower,
         %{data: %{"type" => "Follow"} = data} = _activity,
