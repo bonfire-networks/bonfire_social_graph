@@ -28,7 +28,9 @@ defmodule Bonfire.Social.Graph.Import do
   def import_from_csv_file(:ghosts, user, path), do: ghosts_from_csv_file(user, path)
   def import_from_csv_file(:silences, user, path), do: silences_from_csv_file(user, path)
   def import_from_csv_file(:blocks, user, path), do: blocks_from_csv_file(user, path)
-  def import_from_csv_file(other, user, path), do: error("Please select a valid type of import")
+
+  def import_from_csv_file(_other, _user, _path),
+    do: error("Please select a valid type of import")
 
   defp follows_from_csv_file(user, path) do
     follows_from_csv(user, read_file(path))

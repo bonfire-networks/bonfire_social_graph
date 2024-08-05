@@ -831,7 +831,7 @@ defmodule Bonfire.Social.Graph.Follows do
     end
   end
 
-  def ap_publish_activity(subject, verb, follow) do
+  def ap_publish_activity(subject, _verb, follow) do
     error_msg = l("Could not federate the follow")
 
     follow = repo().maybe_preload(follow, :edge)
