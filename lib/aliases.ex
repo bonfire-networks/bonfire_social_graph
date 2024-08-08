@@ -108,7 +108,7 @@ defmodule Bonfire.Social.Graph.Aliases do
         add_link_preview(
           user,
           target,
-          fn url, opts -> Furlex.unfurl_html(url, data, opts) end,
+          fn url, opts -> Unfurl.unfurl_html(url, data, opts) end,
           opts
         )
 
