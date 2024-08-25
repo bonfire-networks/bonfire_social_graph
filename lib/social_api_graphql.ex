@@ -243,7 +243,7 @@
 
 #       if user do
 #         with {:ok, f} <- Bonfire.Social.Graph.Follows.follow(user, to_follow),
-#              do: {:ok, Utils.e(f, :activity, nil)}
+#              do: {:ok, e(f, :activity, nil)}
 #       else
 #         {:error, "Not authenticated"}
 #       end
@@ -254,7 +254,7 @@
 
 #       if user do
 #         with {:ok, f} <- Bonfire.Social.Boosts.boost(user, id),
-#              do: {:ok, Utils.e(f, :activity, nil)}
+#              do: {:ok, e(f, :activity, nil)}
 #       else
 #         {:error, "Not authenticated"}
 #       end
@@ -265,7 +265,7 @@
 
 #       if user do
 #         with {:ok, f} <- Bonfire.Social.Likes.like(user, id),
-#              do: {:ok, Utils.e(f, :activity, nil)}
+#              do: {:ok, e(f, :activity, nil)}
 #       else
 #         {:error, "Not authenticated"}
 #       end
@@ -276,7 +276,7 @@
 
 #       if user do
 #         with {:ok, f} <- Bonfire.Social.Flags.flag(user, id),
-#              do: {:ok, Utils.e(f, :activity, nil)}
+#              do: {:ok, e(f, :activity, nil)}
 #       else
 #         {:error, "Not authenticated"}
 #       end
