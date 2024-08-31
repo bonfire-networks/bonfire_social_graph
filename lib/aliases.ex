@@ -157,7 +157,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   defp add_link(%{} = user, external_url, type, meta, opts) do
     trigger_fun = fn target ->
       maybe_apply(
-        Config.get([__MODULE__, :triggers, :add_link, type]) |> debug(),
+        Config.get([__MODULE__, :triggers, :add_link, type]),
         :trigger,
         [:add_link, user, target],
         opts
