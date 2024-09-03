@@ -366,7 +366,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     # TODO: configurable boundaries for follows
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object_profile]
 
-    query([subject: ulid(user), object_type: opts[:type]], opts)
+    query([subject: uid(user), object_type: opts[:type]], opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
     |> Social.many(opts[:paginate], opts)
     # follow pointers
@@ -401,7 +401,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   def list_aliased(user, opts \\ []) do
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :subject]
 
-    [object: ulid(user), subject_type: opts[:type]]
+    [object: uid(user), subject_type: opts[:type]]
     |> query(opts)
     |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_user_profile_only(opts)
