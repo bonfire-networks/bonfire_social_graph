@@ -236,7 +236,7 @@ defmodule Bonfire.Social.Graph.Follows do
           invalidate_followed_outboxes_cache(id(user))
 
           # FIXME: should not compute feed ids twice
-          maybe_apply(Bonfire.UI.Social.LivePush, :push_activity_object, [
+          maybe_apply(Bonfire.Social.LivePush, :push_activity_object, [
             FeedActivities.get_feed_ids(opts[:to_feeds]),
             follow,
             object,
