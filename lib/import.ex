@@ -21,83 +21,91 @@ defmodule Bonfire.Social.Graph.Import do
 
   ## Examples
 
-      iex> import_from_csv_file(:follows, user, "path/to/file.csv")
+      iex> import_from_csv_file(:follows, scope, "path/to/file.csv")
 
   """
-  def import_from_csv_file(:follows, user, path), do: follows_from_csv_file(user, path)
-  def import_from_csv_file(:ghosts, user, path), do: ghosts_from_csv_file(user, path)
-  def import_from_csv_file(:silences, user, path), do: silences_from_csv_file(user, path)
-  def import_from_csv_file(:blocks, user, path), do: blocks_from_csv_file(user, path)
+  def import_from_csv_file(:follows, scope, path), do: follows_from_csv_file(scope, path)
+  def import_from_csv_file(:ghosts, scope, path), do: ghosts_from_csv_file(scope, path)
+  def import_from_csv_file(:silences, scope, path), do: silences_from_csv_file(scope, path)
+  def import_from_csv_file(:blocks, scope, path), do: blocks_from_csv_file(scope, path)
 
   def import_from_csv_file(_other, _user, _path),
     do: error("Please select a valid type of import")
 
-  defp follows_from_csv_file(user, path) do
-    follows_from_csv(user, read_file(path))
+  defp follows_from_csv_file(scope, path) do
+    follows_from_csv(scope, read_file(path))
     # TODO: delete file
   end
 
-  defp follows_from_csv(user, csv) do
-    process_csv("follows_import", user, csv)
+  defp follows_from_csv(scope, csv) do
+    process_csv("follows_import", scope, csv)
   end
 
-  defp ghosts_from_csv_file(user, path) do
-    ghosts_from_csv(user, read_file(path))
+  defp ghosts_from_csv_file(scope, path) do
+    ghosts_from_csv(scope, read_file(path))
     # TODO: delete file
   end
 
-  defp ghosts_from_csv(user, csv) do
-    process_csv("ghosts_import", user, csv)
+  defp ghosts_from_csv(scope, csv) do
+    process_csv("ghosts_import", scope, csv)
   end
 
-  defp silences_from_csv_file(user, path) do
-    silences_from_csv(user, read_file(path))
+  defp silences_from_csv_file(scope, path) do
+    silences_from_csv(scope, read_file(path))
     # TODO: delete file
   end
 
-  defp silences_from_csv(user, csv) do
-    process_csv("silences_import", user, csv)
+  defp silences_from_csv(scope, csv) do
+    process_csv("silences_import", scope, csv)
   end
 
-  defp blocks_from_csv_file(user, path) do
-    blocks_from_csv(user, read_file(path))
+  defp blocks_from_csv_file(scope, path) do
+    blocks_from_csv(scope, read_file(path))
     # TODO: delete file
   end
 
-  defp blocks_from_csv(user, csv) do
-    process_csv("blocks_import", user, csv)
+  defp blocks_from_csv(scope, csv) do
+    process_csv("blocks_import", scope, csv)
   end
 
   defp read_file(path) do
     path
-    # |> File.read!()
-    |> File.stream!(read_ahead: 100_000)
+    |> File.read!()
+
+    # |> File.stream!(read_ahead: 100_000) # FIXME?
   end
 
-  defp process_csv(type, user, csv) when is_binary(csv) do
-    csv
-    |> CSV.parse_string()
+  defp process_csv(type, scope, csv) when is_binary(csv) do
+    case csv
+         |> debug()
+         |> CSV.parse_string() do
+      # for cases where its a simple text file
+      [] -> [[csv]]
+      csv -> csv
+    end
     |> debug()
     # |> List.delete("Account address")
     |> Enum.map(&(&1 |> List.first() |> String.trim() |> String.trim_leading("@")))
     |> Enum.reject(&(&1 == ""))
-    |> enqueue_many(type, user, ...)
+    |> enqueue_many(type, scope, ...)
   end
 
-  defp process_csv(type, user, csv) do
+  defp process_csv(type, scope, csv) do
     # using Stream
     csv
     |> CSV.parse_stream()
     |> Stream.map(fn data_cols ->
       enqueue_many(
         type,
-        user,
+        scope,
         data_cols
         |> List.first()
         |> String.trim()
         |> String.trim_leading("@")
+        |> debug()
       )
     end)
+    |> debug()
     |> Enum.frequencies_by(fn
       {:ok, %Oban.Job{}} ->
         :ok
@@ -116,28 +124,28 @@ defmodule Bonfire.Social.Graph.Import do
   #   enqueue_many("ghosts_import", ghoster, identifiers)
   # end
 
-  # def silences_from_list(%User{} = user, [_ | _] = identifiers) do
-  #   enqueue_many("silences_import", user, identifiers)
+  # def silences_from_list(%User{} = scope, [_ | _] = identifiers) do
+  #   enqueue_many("silences_import", scope, identifiers)
   # end
 
-  # def blocks_from_list(%User{} = user, [_ | _] = identifiers) do
-  #   enqueue_many("blocks_import", user, identifiers)
+  # def blocks_from_list(%User{} = scope, [_ | _] = identifiers) do
+  #   enqueue_many("blocks_import", scope, identifiers)
   # end
 
-  defp enqueue_many(op, user, identifiers) when is_list(identifiers) do
+  defp enqueue_many(op, scope, identifiers) when is_list(identifiers) do
     identifiers
     |> Enum.map(fn identifier ->
-      enqueue_many(op, user, identifier)
+      enqueue_many(op, scope, identifier)
     end)
-    |> debug()
     |> Enum.frequencies_by(fn
       {:ok, %Oban.Job{}} -> :ok
       _ -> :error
     end)
   end
 
-  defp enqueue_many(op, user, identifier) do
-    enqueue([queue: :import], %{"op" => op, "user_id" => user.id, "identifier" => identifier})
+  defp enqueue_many(op, scope, identifier) do
+    enqueue([queue: :import], %{"op" => op, "user_id" => scope, "identifier" => identifier})
+    |> debug()
   end
 
   defp enqueue(spec, worker_args \\ []), do: Oban.insert(job(spec, worker_args))
@@ -145,60 +153,69 @@ defmodule Bonfire.Social.Graph.Import do
   defp job(spec, worker_args \\ []), do: new(worker_args, spec)
 
   @doc """
-  Perform the queued job based on the operation and user.
+  Perform the queued job based on the operation and scope.
 
   ## Examples
 
       iex> perform(%{args: %{"op" => "follows_import", "user_id" => "user1", "identifier" => "id1"}})
       :ok
 
+      iex> perform(%{args: %{"op" => "blocks_import", "user_id" => "instance_wide", "identifier" => "id1"}})
+      :ok
+
   """
+  def perform(%{
+        args: %{"op" => op, "user_id" => "instance_wide", "identifier" => identifier} = _args
+      }) do
+    # debug(args, op)
+    perform(op, identifier, :instance_wide)
+  end
+
   def perform(%{args: %{"op" => op, "user_id" => user_id, "identifier" => identifier} = _args}) do
     # debug(args, op)
     with {:ok, user} <- Users.by_username(user_id) do
-      perform(op, user, identifier)
+      perform(op, identifier, current_user: user)
     end
   end
 
   @doc """
-  Perform an import operation for the user.
+  Perform an import operation for the scope.
 
   ## Examples
 
-      iex> perform("follows_import", user, "identifier")
+      iex> perform("follows_import", scope, "identifier")
 
   """
-  @spec perform(atom(), User.t(), list()) :: :ok | list() | {:error, any()}
-  def perform("silences_import" = op, %User{} = user, identifier) do
+  def perform("silences_import" = op, identifier, scope) do
     with {:ok, %{} = silence} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
-         {:ok, _} <- Blocks.block(silence, [:silence], current_user: user) do
+         {:ok, _} <- Blocks.block(silence, [:silence], scope) do
       :ok
     else
       error -> handle_error(op, identifier, error)
     end
   end
 
-  def perform("ghosts_import" = op, %User{} = user, identifier) do
+  def perform("ghosts_import" = op, identifier, scope) do
     with {:ok, %{} = ghost} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
-         {:ok, ghost} <- Blocks.block(ghost, [:ghost], current_user: user) do
+         {:ok, ghost} <- Blocks.block(ghost, [:ghost], scope) do
       :ok
     else
       error -> handle_error(op, identifier, error)
     end
   end
 
-  def perform("blocks_import" = op, %User{} = user, identifier) do
+  def perform("blocks_import" = op, identifier, scope) do
     with {:ok, %{} = ghost} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
-         {:ok, _ghost} <- Blocks.block(ghost, [:ghost, :silence], current_user: user) do
+         {:ok, _ghost} <- Blocks.block(ghost, [:ghost, :silence], scope) do
       :ok
     else
       error -> handle_error(op, identifier, error)
     end
   end
 
-  def perform("follows_import" = op, %User{} = user, identifier) do
+  def perform("follows_import" = op, identifier, scope) do
     with {:ok, %{} = followed} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
-         {:ok, _followed} <- Follows.follow(user, followed) do
+         {:ok, _followed} <- Follows.follow(scope, followed) do
       :ok
     else
       error -> handle_error(op, identifier, error)
