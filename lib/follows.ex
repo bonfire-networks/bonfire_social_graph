@@ -860,6 +860,9 @@ defmodule Bonfire.Social.Graph.Follows do
         error("Actor not found", error_msg)
         {:ok, :ignore}
 
+      {:reject, reason} ->
+        {:reject, reason}
+
       e ->
         error(e, error_msg)
         raise error_msg
