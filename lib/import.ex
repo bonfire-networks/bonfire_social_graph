@@ -187,7 +187,10 @@ defmodule Bonfire.Social.Graph.Import do
 
   """
   def perform("silences_import" = op, identifier, scope) do
-    with {:ok, %{} = silence} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
+    with {:ok, %{} = silence} <-
+           AdapterUtils.get_by_url_ap_id_or_username(identifier,
+             add_all_domains_as_instances: true
+           ),
          {:ok, _} <- Blocks.block(silence, [:silence], scope) do
       :ok
     else
@@ -196,7 +199,10 @@ defmodule Bonfire.Social.Graph.Import do
   end
 
   def perform("ghosts_import" = op, identifier, scope) do
-    with {:ok, %{} = ghost} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
+    with {:ok, %{} = ghost} <-
+           AdapterUtils.get_by_url_ap_id_or_username(identifier,
+             add_all_domains_as_instances: true
+           ),
          {:ok, ghost} <- Blocks.block(ghost, [:ghost], scope) do
       :ok
     else
@@ -205,7 +211,10 @@ defmodule Bonfire.Social.Graph.Import do
   end
 
   def perform("blocks_import" = op, identifier, scope) do
-    with {:ok, %{} = ghost} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
+    with {:ok, %{} = ghost} <-
+           AdapterUtils.get_by_url_ap_id_or_username(identifier,
+             add_all_domains_as_instances: true
+           ),
          {:ok, _ghost} <- Blocks.block(ghost, [:ghost, :silence], scope) do
       :ok
     else
