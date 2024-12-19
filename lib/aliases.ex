@@ -10,12 +10,12 @@ defmodule Bonfire.Social.Graph.Aliases do
   alias Bonfire.Data.Identity.Alias
 
   # alias Bonfire.Me.Boundaries
-  alias Bonfire.Me.Characters
-  alias Bonfire.Me.Users
+  # alias Bonfire.Me.Characters
+  # alias Bonfire.Me.Users
 
-  alias Bonfire.Social.Activities
+  # alias Bonfire.Social.Activities
   alias Bonfire.Social.Edges
-  alias Bonfire.Social.FeedActivities
+  # alias Bonfire.Social.FeedActivities
   # alias Bonfire.Social.Feeds
   alias Bonfire.Social
   alias Bonfire.Social.Graph.Follows
@@ -23,7 +23,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   # alias Bonfire.Data.Identity.User
   # alias Ecto.Changeset
   # alias Needle.Changesets
-  import Bonfire.Boundaries.Queries
+  # import Bonfire.Boundaries.Queries
   import Untangle
   use Arrows
   use Bonfire.Common.Utils
@@ -113,8 +113,19 @@ defmodule Bonfire.Social.Graph.Aliases do
         )
 
       {:error, e} ->
-        info(target, "could not find an AP actor, maybe add as URL instead")
+        info(e, "could not find an AP actor for `#{target}`, maybe add as URL instead")
         add_link_preview(user, target, nil, opts)
+    end
+  end
+
+  def add(%{} = user, {:provider, provider, params}, opts) do
+    meta = %{
+      metadata: %{provider => Enums.filter_empty(params, nil), verified: true}
+      # marking OpenID/oAuth links as verified
+    }
+
+    with {:ok, external_url} <- external_url(params) do
+      add_link(user, external_url, provider, meta, opts)
     end
   end
 
@@ -140,17 +151,6 @@ defmodule Bonfire.Social.Graph.Aliases do
              )
            ]) do
       add(user, media, opts)
-    end
-  end
-
-  def add(%{} = user, {:provider, provider, params}, opts) do
-    meta = %{
-      metadata: %{provider => Enums.filter_empty(params, nil), verified: true}
-      # marking OpenID/oAuth links as verified
-    }
-
-    with {:ok, external_url} <- external_url(params) do
-      add_link(user, external_url, provider, meta, opts)
     end
   end
 
@@ -198,7 +198,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     error(params, "dunno how to get URL from params")
   end
 
-  defp do_add(%user_struct{} = user, %{} = target, opts) do
+  defp do_add(%_user_struct{} = user, %{} = target, opts) do
     repo().transact_with(fn ->
       case create(user, target, opts) do
         {:ok, add} ->

@@ -9,7 +9,7 @@ defmodule Bonfire.Social.Graph.Import do
   alias NimbleCSV.RFC4180, as: CSV
 
   import Untangle
-  alias Bonfire.Data.Identity.User
+  # alias Bonfire.Data.Identity.User
   # alias Bonfire.Me.Characters
   alias Bonfire.Me.Users
   alias Bonfire.Social.Graph.Follows
@@ -191,7 +191,7 @@ defmodule Bonfire.Social.Graph.Import do
            AdapterUtils.get_by_url_ap_id_or_username(identifier,
              add_all_domains_as_instances: true
            ),
-         {:ok, _} <- Blocks.block(silence, [:silence], scope) do
+         {:ok, _silenced} <- Blocks.block(silence, [:silence], scope) do
       :ok
     else
       error -> handle_error(op, identifier, error)
@@ -203,7 +203,7 @@ defmodule Bonfire.Social.Graph.Import do
            AdapterUtils.get_by_url_ap_id_or_username(identifier,
              add_all_domains_as_instances: true
            ),
-         {:ok, ghost} <- Blocks.block(ghost, [:ghost], scope) do
+         {:ok, _ghosted} <- Blocks.block(ghost, [:ghost], scope) do
       :ok
     else
       error -> handle_error(op, identifier, error)
@@ -215,7 +215,7 @@ defmodule Bonfire.Social.Graph.Import do
            AdapterUtils.get_by_url_ap_id_or_username(identifier,
              add_all_domains_as_instances: true
            ),
-         {:ok, _ghost} <- Blocks.block(ghost, [:ghost, :silence], scope) do
+         {:ok, _blocked} <- Blocks.block(ghost, [:ghost, :silence], scope) do
       :ok
     else
       error -> handle_error(op, identifier, error)
@@ -237,8 +237,8 @@ defmodule Bonfire.Social.Graph.Import do
     handle_error(op, identifier, error)
   end
 
-  defp handle_error(op, identifier, error) when is_binary(error) or is_atom(error) do
-    {:error, error}
+  defp handle_error(_op, _identifier, error) when is_binary(error) or is_atom(error) do
+    error(error)
   end
 
   defp handle_error(op, identifier, error) do

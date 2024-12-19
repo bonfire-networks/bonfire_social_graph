@@ -8,7 +8,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
   # alias Bonfire.Me.Boundaries
   alias Bonfire.Me.Characters
-  alias Bonfire.Me.Users
+  # alias Bonfire.Me.Users
 
   alias Bonfire.Social.Activities
   alias Bonfire.Social.Edges

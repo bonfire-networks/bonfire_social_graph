@@ -3,7 +3,7 @@ defmodule Bonfire.Social.Graph.Integration do
   alias Bonfire.Common.Config
   use Bonfire.Common.Utils
   # alias Bonfire.Data.Social.Follow
-  import Untangle
+  # import Untangle
 
   def repo, do: Config.repo()
 
