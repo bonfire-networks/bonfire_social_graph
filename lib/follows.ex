@@ -597,7 +597,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
   defp fetch_all_followed_outboxes(user, include_categories, opts) do
     if(include_categories != true,
-      do: opts ++ [filters: [exclude_object_type: Bonfire.Classify.Category]],
+      do: opts ++ [filters: [exclude_object_types: Bonfire.Classify.Category]],
       else: opts
     )
     |> all_objects_by_subject(user, ...)
@@ -696,7 +696,7 @@ defmodule Bonfire.Social.Graph.Follows do
     # TODO: configurable boundaries for follows
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object]
 
-    [subject: uid(user), object_type: opts[:type]]
+    [subject: uid(user), object_types: opts[:type]]
     |> query(opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_followed_profile_only(opts)
@@ -747,7 +747,7 @@ defmodule Bonfire.Social.Graph.Follows do
   def list_followers(user, opts \\ []) do
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :subject]
 
-    [object: uid(user), subject_type: opts[:type]]
+    [object: uid(user), subject_types: opts[:type]]
     |> query(opts)
     |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_follower_profile_only(opts)
