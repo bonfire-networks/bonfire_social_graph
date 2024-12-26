@@ -237,7 +237,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
           # FIXME: should not compute feed ids twice
           maybe_apply(Bonfire.Social.LivePush, :push_activity_object, [
-            FeedActivities.get_feed_ids(opts[:to_feeds]),
+            FeedActivities.get_publish_feed_ids(opts[:to_feeds]),
             follow,
             object,
             [push_to_thread: false, notify: true]
