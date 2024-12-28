@@ -635,13 +635,13 @@ defmodule Bonfire.Social.Graph.Follows do
 
   ## Examples
 
-      iex> Bonfire.Social.Graph.Follows.query([my: :object], current_user: user)
+      iex> Bonfire.Social.Graph.Follows.query([my: :objects], current_user: user)
       # following
 
       iex> Bonfire.Social.Graph.Follows.query([my: :followers], current_user: user)
       # followers
   """
-  def query([my: :object], opts),
+  def query([my: :objects], opts),
     do: query([subjects: current_user_required!(opts)], opts)
 
   def query([my: :followers], opts),
