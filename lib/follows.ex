@@ -486,8 +486,8 @@ defmodule Bonfire.Social.Graph.Follows do
   def all_by_subject(user, opts \\ []) do
     opts
     # |> Keyword.put_new(:current_user, user)
-    |> Keyword.put_new(:preload, :object)
-    |> query([subject: user], ...)
+    |> Keyword.put_new(:preload, :object_character)
+    |> query([subjects: user], ...)
     |> repo().many()
   end
 
@@ -533,8 +533,8 @@ defmodule Bonfire.Social.Graph.Follows do
   def all_by_object(user, opts \\ []) do
     opts
     # |> Keyword.put_new(:current_user, user)
-    |> Keyword.put_new(:preload, :subject)
-    |> query([object: user], ...)
+    |> Keyword.put_new(:preload, :subject_character)
+    |> query([objects: user], ...)
     |> repo().many()
   end
 
@@ -642,10 +642,10 @@ defmodule Bonfire.Social.Graph.Follows do
       # followers
   """
   def query([my: :object], opts),
-    do: query([subject: current_user_required!(opts)], opts)
+    do: query([subjects: current_user_required!(opts)], opts)
 
   def query([my: :followers], opts),
-    do: query([object: current_user_required!(opts)], opts)
+    do: query([objects: current_user_required!(opts)], opts)
 
   def query(filters, opts) do
     query_base(filters, opts)
@@ -696,7 +696,7 @@ defmodule Bonfire.Social.Graph.Follows do
     # TODO: configurable boundaries for follows
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object]
 
-    [subject: uid(user), object_types: opts[:type]]
+    [subjects: uid(user), object_types: opts[:type]]
     |> query(opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_followed_profile_only(opts)
@@ -747,7 +747,7 @@ defmodule Bonfire.Social.Graph.Follows do
   def list_followers(user, opts \\ []) do
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :subject]
 
-    [object: uid(user), subject_types: opts[:type]]
+    [objects: uid(user), subject_types: opts[:type]]
     |> query(opts)
     |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_follower_profile_only(opts)
