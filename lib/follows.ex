@@ -162,7 +162,8 @@ defmodule Bonfire.Social.Graph.Follows do
     # debug(skip?)
     skip? =
       skip? == true ||
-        (skip? == :admins and maybe_apply(Bonfire.Me.Accounts, :is_admin?, follower) == true)
+        (skip? == :admins and
+           maybe_apply(Bonfire.Me.Accounts, :is_admin?, follower, fallback_return: nil) == true)
 
     opts =
       opts
