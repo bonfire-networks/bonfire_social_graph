@@ -16,6 +16,23 @@ defmodule Bonfire.Social.Graph.FollowsTest do
     assert edge.object_id == followed.id
   end
 
+  test "can batch follow" do
+    me = Fake.fake_user!()
+    followed = Fake.fake_user!()
+    followed2 = Fake.fake_user!()
+    id = id(followed)
+    id2 = id(followed)
+
+    assert [{id, {:ok, %{edge: edge}}}, {id2, {:ok, %{edge: edge2}}}] =
+             Follows.batch_follow(me, [followed, followed2])
+
+    # debug(follow)
+    # debug(activity)
+    assert edge.subject_id == me.id
+    assert edge.object_id == followed.id
+    assert edge2.object_id == followed2.id
+  end
+
   test "can get my follow, ignoring boundary checks" do
     me = Fake.fake_user!()
     followed = Fake.fake_user!()
