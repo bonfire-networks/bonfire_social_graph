@@ -768,7 +768,9 @@ defmodule Bonfire.Social.Graph.Follows do
   """
   def list_followed(user, opts \\ []) do
     # TODO: configurable boundaries for follows
-    opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object]
+    opts =
+      to_options(opts) ++
+        [skip_boundary_check: true, preload: [:object_character, :object_profile]]
 
     [subjects: uid(user), object_types: opts[:type]]
     |> query(opts)
