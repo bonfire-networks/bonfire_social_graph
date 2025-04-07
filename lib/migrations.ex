@@ -10,7 +10,7 @@ defmodule Bonfire.Social.Graph.Migrations do
       require Bonfire.Data.Social.Request.Migration
 
       # Bonfire.Data.Social.Block.Migration.migrate_block()
-      Bonfire.Data.Social.Follow.Migration.migrate_follow()
+      Bonfire.Data.Social.Follow.Migration.migrate_follow(:up)
       Bonfire.Data.Social.Request.Migration.migrate_request()
     end
   end
@@ -22,7 +22,7 @@ defmodule Bonfire.Social.Graph.Migrations do
       require Bonfire.Data.Social.Request.Migration
 
       Bonfire.Data.Social.Request.Migration.migrate_request()
-      Bonfire.Data.Social.Follow.Migration.migrate_follow()
+      Bonfire.Data.Social.Follow.Migration.migrate_follow(:down)
     end
   end
 
