@@ -128,7 +128,6 @@ defmodule Bonfire.Social.Graph.FollowsTest do
   end
 
   # because follows are being excluded from the feed query
-  @tag :fixme
   test "follow appears in followed's notifications" do
     follower = Fake.fake_user!()
     followed = Fake.fake_user!()
