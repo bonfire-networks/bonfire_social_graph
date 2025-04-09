@@ -137,7 +137,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
           Requests.request(follower, Follow, loaded_object, opts)
         else
-          warn("remote following remote, should not be possible!")
+          warn("remote following remote, we don't record these at the moment")
           {:error, :not_permitted}
         end
 
@@ -341,8 +341,8 @@ defmodule Bonfire.Social.Graph.Follows do
         {object_id, {:ok, follow}} ->
           {object_id, Social.maybe_federate_and_gift_wrap_activity(follower, follow)}
 
-        {object_id, other} ->
-          {object_id, other}
+        {:ok, %Follow{} = follow} ->
+          Social.maybe_federate_and_gift_wrap_activity(follower, follow)
 
         %Follow{} = follow ->
           Social.maybe_federate_and_gift_wrap_activity(follower, follow)
@@ -351,7 +351,19 @@ defmodule Bonfire.Social.Graph.Follows do
           other
       end)
     else
-      follows
+      Enum.map(follows, fn
+        {object_id, {:ok, follow}} ->
+          {object_id, follow}
+
+        {:ok, %Follow{} = follow} ->
+          {:ok, follow}
+
+        %Follow{} = follow ->
+          {:ok, follow}
+
+        other ->
+          other
+      end)
     end
   end
 
@@ -980,7 +992,7 @@ defmodule Bonfire.Social.Graph.Follows do
          # check if not already following
          false <- following?(follower, followed),
          {:ok, %Follow{} = follow} <-
-           follow(follower, followed, current_user: follower, incoming: true) do
+           follow(follower, followed, current_user: follower, incoming: true) |> debug("fffff") do
       with {:ok, _accept_activity, _adapter_object, _accepted_activity} = accept <-
              ActivityPub.accept_activity(%{
                actor: object,
