@@ -687,7 +687,7 @@ defmodule Bonfire.Social.Graph.Follows do
       else: opts
     )
     |> all_objects_by_subject(user, ...)
-    |> debug()
+    # |> debug()
     |> Enum.map(&e(&1, :character, :outbox_id, nil))
   end
 
