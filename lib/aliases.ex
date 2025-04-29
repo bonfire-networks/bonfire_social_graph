@@ -363,14 +363,17 @@ defmodule Bonfire.Social.Graph.Aliases do
 
   """
   def list_aliases(user, opts \\ []) do
-    # TODO: configurable boundaries for follows
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :object_profile]
 
-    query([subject: uid(user), object_types: opts[:type]], opts)
+    [subjects: uid!(user), object_types: opts[:type]]
+    |> debug()
+    |> query(opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
+    |> debug()
     |> Social.many(opts[:paginate], opts)
     # follow pointers
     |> repo().maybe_preload([edge: [:object]], opts)
+    |> debug()
   end
 
   @doc """
