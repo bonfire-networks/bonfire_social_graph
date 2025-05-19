@@ -177,7 +177,7 @@ defmodule Bonfire.Social.Graph.Aliases do
       trigger_fun.(target)
       add(user, target, opts)
     else
-      {:ok, %Bonfire.Files.Media{} = existing_media} ->
+      {:ok, %{} = existing_media} ->
         with {:ok, target} <- Bonfire.Files.Media.update(user, existing_media, meta) do
           trigger_fun.(target)
           add(user, target, opts)
