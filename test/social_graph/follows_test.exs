@@ -2,7 +2,7 @@ defmodule Bonfire.Social.Graph.FollowsTest do
   use Bonfire.Social.Graph.DataCase, async: true
 
   alias Bonfire.Social.Graph.Follows
-  alias Bonfire.Social.FeedActivities
+  alias Bonfire.Social.Bonfire.Social.FeedLoader
 
   alias Bonfire.Me.Fake
 
@@ -53,19 +53,14 @@ defmodule Bonfire.Social.Graph.FollowsTest do
     assert fetched_follow.id == follow.id
   end
 
-  test "can check if I am following someone" do
+  test "can check if I am following someone or not" do
     me = Fake.fake_user!()
     followed = Fake.fake_user!()
+    assert false == Follows.following?(me, followed)
+
     assert {:ok, follow} = Follows.follow(me, followed)
 
     assert true == Follows.following?(me, followed)
-  end
-
-  test "can check if I am not following someone" do
-    me = Fake.fake_user!()
-    followed = Fake.fake_user!()
-
-    assert false == Follows.following?(me, followed)
   end
 
   test "can unfollow someone" do
@@ -107,7 +102,7 @@ defmodule Bonfire.Social.Graph.FollowsTest do
     assert fetched_follow.id == follow.id
   end
 
-  test "can list someone's followers" do
+  test "can list someone's followers and followed" do
     me = Fake.fake_user!()
     someone = Fake.fake_user!()
     assert {:ok, follow} = Follows.follow(me, someone)
@@ -115,12 +110,6 @@ defmodule Bonfire.Social.Graph.FollowsTest do
     assert %{edges: [fetched_follow]} = Follows.list_followers(someone, current_user: me)
 
     assert fetched_follow.id == follow.id
-  end
-
-  test "can list someone's followed" do
-    me = Fake.fake_user!()
-    someone = Fake.fake_user!()
-    assert {:ok, follow} = Follows.follow(me, someone)
 
     assert %{edges: [fetched_follow]} = Follows.list_followers(someone, current_user: me)
 
@@ -137,16 +126,14 @@ defmodule Bonfire.Social.Graph.FollowsTest do
 
     assert fetched_follow.id == follow.id
 
-    assert %{edges: fetched} = p = FeedActivities.feed(:notifications, current_user: followed)
+    assert %{edges: [notification | _]} =
+             Bonfire.Social.FeedLoader.feed(:notifications, current_user: followed)
 
-    # debug(notifications: p)
-    assert %{} = notification = List.first(fetched)
+    assert notification.activity.object_id == followed.id
 
-    assert activity = repo().maybe_preload(notification.activity, object: [:profile])
+    # assert activity = repo().maybe_preload(notification.activity, object: [:profile])
 
     # debug(followed: followed)
     # debug(notifications: activity)
-
-    assert activity.object_id == followed.id
   end
 end
