@@ -5,6 +5,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
   alias Bonfire.Data.Social.Follow
   alias Bonfire.Data.Social.Request
+  alias Bonfire.Data.Edges.Edge
 
   # alias Bonfire.Me.Boundaries
   alias Bonfire.Me.Characters
@@ -84,6 +85,50 @@ defmodule Bonfire.Social.Graph.Follows do
   """
   def requested?(subject, object),
     do: Requests.requested?(subject, Follow, object)
+
+  @doc """
+  Checks the follow relationship status between a subject and an object.
+
+  ## Parameters
+
+  - `subject`: The subject (follower or requester)
+  - `object`: The object (followed or requested)
+  - `opts`: Additional options
+
+  ## Returns
+
+  - `Follow` if the subject is following the object
+  - `Request` if the subject has requested to follow the object
+  - `false` if there is no relationship
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.follow_status(user, user2)
+      Follow
+      
+      iex> Bonfire.Social.Graph.Follows.follow_status(user, user3)
+      Request
+  """
+  def follow_status(subject, object, _opts \\ []) do
+    follow_table_id = Bonfire.Common.Types.table_id(Follow)
+
+    # Create a single query that checks both Follow and Request tables
+    query =
+      from e in Edge,
+        where: e.subject_id in ^Types.uids(subject) and e.object_id in ^Types.uids(object),
+        left_join: f in Follow,
+        on: f.id == e.id,
+        left_join: r in Request,
+        on: r.id == e.id and e.table_id == ^follow_table_id and is_nil(r.ignored_at),
+        select: {f.id, r.id},
+        limit: 1
+
+    case repo().one(query) do
+      {followed, _} when not is_nil(followed) -> Follow
+      {_, requested} when not is_nil(requested) -> Request
+      _ -> false
+    end
+  end
 
   @doc """
   Follows someone or something. In case of success, publishes to feeds and federates.
