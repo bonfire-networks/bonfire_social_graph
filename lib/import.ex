@@ -11,6 +11,7 @@ defmodule Bonfire.Social.Graph.Import do
   import Untangle
   # alias Bonfire.Data.Identity.User
   # alias Bonfire.Me.Characters
+  alias Bonfire.Common.Utils
   alias Bonfire.Me.Users
   alias Bonfire.Social.Graph.Follows
   alias Bonfire.Boundaries.Blocks
@@ -224,7 +225,7 @@ defmodule Bonfire.Social.Graph.Import do
 
   def perform("follows_import" = op, identifier, scope) do
     with {:ok, %{} = followed} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
-         {:ok, _followed} <- Follows.follow(scope, followed) do
+         {:ok, _followed} <- Follows.follow(Utils.current_user(scope), followed) do
       :ok
     else
       error -> handle_error(op, identifier, error)

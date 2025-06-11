@@ -210,7 +210,7 @@ defmodule Bonfire.Social.Graph.Follows do
       iex> batch_follow(me, [user1, user2])
       [{:ok, %Follow{}, ...], {:ok, %Request{}}]
   """
-  def batch_follow(follower, objects, opts \\ []) when is_list(objects) do
+  def batch_follow(%{} = follower, objects, opts \\ []) when is_list(objects) do
     follower = repo().preload(follower, [:character, :peered])
     opts = Keyword.put_new(to_options(opts), :current_user, follower)
 
