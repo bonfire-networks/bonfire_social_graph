@@ -119,12 +119,14 @@ defmodule Bonfire.Social.Graph.Aliases do
   end
 
   def add(%{} = user, {:provider, provider, params}, opts) do
-    meta = %{
-      metadata: %{provider => Enums.filter_empty(params, nil), verified: true}
-      # marking OpenID/oAuth links as verified
-    }
-
     with {:ok, external_url} <- external_url(params) do
+      opts = to_options(opts)
+
+      meta = %{
+        metadata: %{provider => Enums.filter_empty(params, nil), verified: true}
+        # marking OpenID/oAuth links as verified
+      }
+
       add_link(user, external_url, provider, meta, opts)
     end
   end
@@ -172,6 +174,7 @@ defmodule Bonfire.Social.Graph.Aliases do
              external_url,
              %{media_type: to_string(type), size: 0},
              meta
+             |> Map.put(:url, external_url)
            )
            |> debug() do
       trigger_fun.(target)
@@ -188,6 +191,16 @@ defmodule Bonfire.Social.Graph.Aliases do
     end
   end
 
+  defp external_url(%{"html_url" => url} = _params)
+       when is_binary(url) do
+    {:ok, url}
+  end
+
+  defp external_url(%{"url" => url} = _params)
+       when is_binary(url) do
+    {:ok, url}
+  end
+
   defp external_url(%{"iss" => base_url, "sub" => external_id} = _params)
        when is_binary(base_url) and is_binary(external_id) do
     #  support ORCID.org
@@ -195,7 +208,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   end
 
   defp external_url(params) do
-    error(params, "dunno how to get URL from params")
+    error(params, "Not able to find the user profile URL in the data provided")
   end
 
   defp do_add(%_user_struct{} = user, %{} = target, opts) do
@@ -262,7 +275,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     # |> Keyword.put_new(:current_user, user)
     |> Keyword.put_new(:skip_boundary_check, true)
     |> Keyword.put_new(:preload, :object)
-    |> query([subject: user], ...)
+    |> query([subjects: user], ...)
     |> repo().many()
   end
 
@@ -293,7 +306,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     opts
     |> Keyword.put_new(:skip_boundary_check, true)
     |> Keyword.put_new(:preload, :subject)
-    |> query([object: object], ...)
+    |> query([objects: object], ...)
     |> repo().many()
   end
 
@@ -326,7 +339,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     filters = e(opts, :filters, []) ++ filters
 
     Edges.query_parent(Alias, filters, debug(opts))
-    |> query_filter(Keyword.drop(filters, [:object, :subject]))
+    |> query_filter(Keyword.drop(filters, [:objects, :subjects]))
 
     # |> debug("follows query")
   end
@@ -404,7 +417,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   def list_aliased(user, opts \\ []) do
     opts = to_options(opts) ++ [skip_boundary_check: true, preload: :subject]
 
-    [object: uid(user), subject_types: opts[:type]]
+    [objects: uid(user), subject_types: opts[:type]]
     |> query(opts)
     |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_user_profile_only(opts)
