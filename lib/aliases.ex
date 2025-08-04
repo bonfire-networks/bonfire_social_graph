@@ -154,7 +154,7 @@ defmodule Bonfire.Social.Graph.Aliases do
            ]) do
       add(user, media, opts)
     else
-      e -> error(e, l "Could not find or save the link")
+      e -> error(e, l("Could not find or save the link"))
     end
   end
 
