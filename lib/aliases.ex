@@ -118,17 +118,19 @@ defmodule Bonfire.Social.Graph.Aliases do
     end
   end
 
-  def add(%{} = user, {:provider, provider, params}, opts) do
-    with {:ok, external_url} <- external_url(params) do
-      opts = to_options(opts)
+  def add(%{} = user, {:provider, provider, provider_name, user_external_url, params}, opts) do
+    opts = to_options(opts)
 
-      meta = %{
-        metadata: %{provider => Enums.filter_empty(params, nil), verified: true}
-        # marking OpenID/oAuth links as verified
+    meta = %{
+      metadata: %{
+        "name" => provider_name,
+        provider => Enums.filter_empty(params, nil),
+        verified: true
       }
+      # marking OpenID/oAuth links as verified
+    }
 
-      add_link(user, external_url, provider, meta, opts)
-    end
+    add_link(user, user_external_url, provider, meta, opts)
   end
 
   defp add_link_preview(user, target, fetch_fn, opts) do
@@ -191,26 +193,6 @@ defmodule Bonfire.Social.Graph.Aliases do
       e ->
         error(e)
     end
-  end
-
-  defp external_url(%{"html_url" => url} = _params)
-       when is_binary(url) do
-    {:ok, url}
-  end
-
-  defp external_url(%{"url" => url} = _params)
-       when is_binary(url) do
-    {:ok, url}
-  end
-
-  defp external_url(%{"iss" => base_url, "sub" => external_id} = _params)
-       when is_binary(base_url) and is_binary(external_id) do
-    #  support ORCID.org
-    {:ok, "#{base_url}/#{external_id}"}
-  end
-
-  defp external_url(params) do
-    error(params, "Not able to find the user profile URL in the data provided")
   end
 
   defp do_add(%_user_struct{} = user, %{} = target, opts) do
@@ -323,12 +305,11 @@ defmodule Bonfire.Social.Graph.Aliases do
   """
   def all_subjects_by_object(object, opts \\ [])
 
-  def all_subjects_by_object({:provider, provider, params}, opts) do
+  def all_subjects_by_object({:provider, provider, user_external_url, params}, opts) do
     opts = opts ++ [skip_boundary_check: true]
 
-    external_url(params)
-    ~> Bonfire.Files.Media.one([path: ..., media_type: to_string(provider)], opts)
-    |> debug()
+    Bonfire.Files.Media.one([path: user_external_url, media_type: to_string(provider)], opts)
+    |> debug("found a match?")
     ~> all_subjects_by_object(opts)
   end
 
