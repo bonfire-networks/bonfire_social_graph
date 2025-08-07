@@ -225,6 +225,9 @@ defmodule Bonfire.Social.Graph.Aliases do
     if exists?(user, target) do
       Edges.delete_by_both(user, Alias, target)
 
+      # If the target is a Media, delete it too
+      maybe_delete_media(target)
+
       # TODO: update AP user?
       # Social.maybe_federate(user, :update, user)
       # ap_publish_activity(user, :update, target)
@@ -242,6 +245,12 @@ defmodule Bonfire.Social.Graph.Aliases do
       remove(user, target)
     end
   end
+
+  defp maybe_delete_media(%{__struct__: Bonfire.Files.Media} = target) do
+    Bonfire.Files.Media.hard_delete(target)
+  end
+
+  defp maybe_delete_media(_), do: :ok
 
   # TODO: abstract the next few functions into Edges
 
