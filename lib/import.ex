@@ -155,7 +155,7 @@ defmodule Bonfire.Social.Graph.Import do
         :error
 
       {:ok, result} ->
-        flood(result, "import result")
+        debug(result, "import result")
         :ok
 
       other ->
