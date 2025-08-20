@@ -22,10 +22,10 @@ defmodule Bonfire.Social.Graph.Import do
 
   ## Examples
 
-      iex> import_from_csv_file(:follows, scope, "path/to/file.csv")
+      iex> import_from_csv_file(:following, scope, "path/to/file.csv")
 
   """
-  def import_from_csv_file(:follows, scope, path), do: follows_from_csv_file(scope, path)
+  def import_from_csv_file(:following, scope, path), do: follows_from_csv_file(scope, path)
   def import_from_csv_file(:ghosts, scope, path), do: ghosts_from_csv_file(scope, path)
   def import_from_csv_file(:silences, scope, path), do: silences_from_csv_file(scope, path)
   def import_from_csv_file(:blocks, scope, path), do: blocks_from_csv_file(scope, path)
@@ -103,18 +103,10 @@ defmodule Bonfire.Social.Graph.Import do
         |> List.first()
         |> String.trim()
         |> String.trim_leading("@")
-        |> debug()
+        # |> debug()
       )
     end)
-    |> debug()
-    |> Enum.frequencies_by(fn
-      {:ok, %Oban.Job{}} ->
-        :ok
-
-      other ->
-        error(other)
-        :error
-    end)
+    |> results_return()
   end
 
   # def follows_from_list(%User{} = follower, [_ | _] = identifiers) do
@@ -136,22 +128,41 @@ defmodule Bonfire.Social.Graph.Import do
   defp enqueue_many(op, scope, identifiers) when is_list(identifiers) do
     identifiers
     |> Enum.map(fn identifier ->
-      enqueue_many(op, scope, identifier)
+      enqueue(op, scope, identifier)
     end)
-    |> Enum.frequencies_by(fn
-      {:ok, %Oban.Job{}} -> :ok
-      _ -> :error
-    end)
+    |> results_return()
   end
 
   defp enqueue_many(op, scope, identifier) do
-    enqueue([queue: :import], %{"op" => op, "user_id" => scope, "identifier" => identifier})
-    |> debug()
+    enqueue(op, scope, identifier)
+    |> List.wrap()
+    |> results_return()
   end
 
-  defp enqueue(spec, worker_args \\ []), do: Oban.insert(job(spec, worker_args))
+  defp enqueue(op, scope, identifier),
+    do:
+      job_enqueue([queue: :import], %{"op" => op, "user_id" => scope, "identifier" => identifier})
+
+  defp job_enqueue(spec, worker_args \\ []), do: job(spec, worker_args) |> Oban.insert()
 
   defp job(spec, worker_args \\ []), do: new(worker_args, spec)
+
+  defp results_return(results) do
+    results
+    |> Enum.frequencies_by(fn
+      {:ok, %{errors: errors}} when is_list(errors) and errors != [] ->
+        error(errors, "import error")
+        :error
+
+      {:ok, result} ->
+        flood(result, "import result")
+        :ok
+
+      other ->
+        error(other, "import error")
+        :error
+    end)
+  end
 
   @doc """
   Perform the queued job based on the operation and scope.
