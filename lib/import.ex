@@ -29,6 +29,7 @@ defmodule Bonfire.Social.Graph.Import do
   def import_from_csv_file(:ghosts, scope, path), do: ghosts_from_csv_file(scope, path)
   def import_from_csv_file(:silences, scope, path), do: silences_from_csv_file(scope, path)
   def import_from_csv_file(:blocks, scope, path), do: blocks_from_csv_file(scope, path)
+  def import_from_csv_file(:bookmarks, scope, path), do: bookmarks_from_csv_file(scope, path)
 
   def import_from_csv_file(_other, _user, _path),
     do: error("Please select a valid type of import")
@@ -69,6 +70,14 @@ defmodule Bonfire.Social.Graph.Import do
     process_csv("blocks_import", scope, csv)
   end
 
+  defp bookmarks_from_csv_file(scope, path) do
+    bookmarks_from_csv(scope, read_file(path))
+  end
+
+  defp bookmarks_from_csv(scope, csv) do
+    process_csv("bookmarks_import", scope, csv, false)
+  end
+
   defp read_file(path) do
     path
     |> File.read!()
@@ -76,10 +85,12 @@ defmodule Bonfire.Social.Graph.Import do
     # |> File.stream!(read_ahead: 100_000) # FIXME?
   end
 
-  defp process_csv(type, scope, csv) when is_binary(csv) do
+  defp process_csv(type, scope, csv, with_header \\ true)
+
+  defp process_csv(type, scope, csv, with_header) when is_binary(csv) do
     case csv
-         |> debug()
-         |> CSV.parse_string() do
+         #  |> debug()
+         |> CSV.parse_string(skip_headers: with_header) do
       # for cases where its a simple text file
       [] -> [[csv]]
       csv -> csv
@@ -91,10 +102,10 @@ defmodule Bonfire.Social.Graph.Import do
     |> enqueue_many(type, scope, ...)
   end
 
-  defp process_csv(type, scope, csv) do
+  defp process_csv(type, scope, csv, with_header) do
     # using Stream
     csv
-    |> CSV.parse_stream()
+    |> CSV.parse_stream(skip_headers: with_header)
     |> Stream.map(fn data_cols ->
       enqueue_many(
         type,
@@ -237,6 +248,19 @@ defmodule Bonfire.Social.Graph.Import do
   def perform("follows_import" = op, identifier, scope) do
     with {:ok, %{} = followed} <- AdapterUtils.get_by_url_ap_id_or_username(identifier),
          {:ok, _followed} <- Follows.follow(Utils.current_user(scope), followed) do
+      :ok
+    else
+      error -> handle_error(op, identifier, error)
+    end
+  end
+
+  def perform("bookmarks_import" = op, identifier, scope) do
+    with {:ok, %{} = bookmarkable} <-
+           AdapterUtils.get_or_fetch_and_create_by_uri(identifier,
+             add_all_domains_as_instances: true
+           ),
+         {:ok, _bookmark} <-
+           Bonfire.Social.Bookmarks.bookmark(Utils.current_user(scope), bookmarkable) do
       :ok
     else
       error -> handle_error(op, identifier, error)
