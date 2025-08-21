@@ -361,15 +361,16 @@ defmodule Bonfire.Social.Graph.Import do
 
   def perform(_, _, _), do: :ok
 
-  defp handle_error(op, identifier, {:error, error}) do
-    handle_error(op, identifier, error)
-  end
+  # defp handle_error(op, identifier, {:error, error}) do
+  #   handle_error(op, identifier, error)
+  # end
 
-  defp handle_error(_op, _identifier, error) when is_binary(error) or is_atom(error) do
-    error(error)
-  end
+  # defp handle_error(_op, _identifier, error) when is_binary(error) or is_atom(error) do
+  #   error(error)
+  # end
 
   defp handle_error(op, identifier, error) do
-    error(error, "#{op} failed for #{identifier}")
+    error(error, "could not import #{identifier}")
+    {:error, Bonfire.Common.Errors.error_msg(error)}
   end
 end
