@@ -30,6 +30,7 @@ defmodule Bonfire.Social.Graph.Import do
   def import_from_csv_file(:silences, scope, path), do: silences_from_csv_file(scope, path)
   def import_from_csv_file(:blocks, scope, path), do: blocks_from_csv_file(scope, path)
   def import_from_csv_file(:bookmarks, scope, path), do: bookmarks_from_csv_file(scope, path)
+  def import_from_csv_file(:circles, scope, path), do: circles_from_csv_file(scope, path)
 
   def import_from_csv_file(_other, _user, _path),
     do: error("Please select a valid type of import")
@@ -78,6 +79,14 @@ defmodule Bonfire.Social.Graph.Import do
     process_csv("bookmarks_import", scope, csv, false)
   end
 
+  defp circles_from_csv_file(scope, path) do
+    circles_from_csv(scope, read_file(path))
+  end
+
+  defp circles_from_csv(scope, csv) do
+    process_csv("circles_import", scope, csv, false)
+  end
+
   defp read_file(path) do
     path
     |> File.read!()
@@ -86,6 +95,33 @@ defmodule Bonfire.Social.Graph.Import do
   end
 
   defp process_csv(type, scope, csv, with_header \\ true)
+
+  defp process_csv("circles_import" = type, scope, csv, with_header) when is_binary(csv) do
+    case csv
+         |> CSV.parse_string(skip_headers: with_header) do
+      # for cases where its a simple text file
+      [] -> [[csv]]
+      csv -> csv
+    end
+    |> debug()
+    # For circles, we need both columns: circle_name,username
+    |> Enum.map(fn row ->
+      case row do
+        [circle_name, username] ->
+          {String.trim(circle_name), String.trim(username) |> String.trim_leading("@")}
+
+        [single_value] ->
+          # If only one column, skip this row as it's invalid
+          nil
+
+        _ ->
+          nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.reject(&(&1 == {"", ""}))
+    |> enqueue_many(type, scope, ...)
+  end
 
   defp process_csv(type, scope, csv, with_header) when is_binary(csv) do
     case csv
@@ -102,6 +138,28 @@ defmodule Bonfire.Social.Graph.Import do
     |> enqueue_many(type, scope, ...)
   end
 
+  defp process_csv("circles_import" = type, scope, csv, with_header) do
+    # using Stream for circles with two columns
+    csv
+    |> CSV.parse_stream(skip_headers: with_header)
+    |> Stream.map(fn data_cols ->
+      case data_cols do
+        [circle_name, username] ->
+          enqueue_many(
+            type,
+            scope,
+            {String.trim(circle_name), String.trim(username) |> String.trim_leading("@")}
+          )
+
+        _ ->
+          # Skip invalid rows
+          {:ok, %{errors: ["Invalid format"]}}
+      end
+    end)
+    |> results_return()
+  end
+
+  #  for any other types that have a single (relevant) column
   defp process_csv(type, scope, csv, with_header) do
     # using Stream
     csv
@@ -150,6 +208,15 @@ defmodule Bonfire.Social.Graph.Import do
     |> results_return()
   end
 
+  defp enqueue(op, scope, {circle_name, username}),
+    do:
+      job_enqueue([queue: :import], %{
+        "op" => op,
+        "user_id" => scope,
+        "context" => circle_name,
+        "identifier" => username
+      })
+
   defp enqueue(op, scope, identifier),
     do:
       job_enqueue([queue: :import], %{"op" => op, "user_id" => scope, "identifier" => identifier})
@@ -192,6 +259,20 @@ defmodule Bonfire.Social.Graph.Import do
       }) do
     # debug(args, op)
     perform(op, identifier, :instance_wide)
+  end
+
+  def perform(%{
+        args:
+          %{
+            "op" => "circles_import",
+            "user_id" => user_id,
+            "context" => circle_name,
+            "identifier" => username
+          } = _args
+      }) do
+    with {:ok, user} <- Users.by_username(user_id) do
+      perform("circles_import", {circle_name, username}, current_user: user)
+    end
   end
 
   def perform(%{args: %{"op" => op, "user_id" => user_id, "identifier" => identifier} = _args}) do
@@ -264,6 +345,17 @@ defmodule Bonfire.Social.Graph.Import do
       :ok
     else
       error -> handle_error(op, identifier, error)
+    end
+  end
+
+  def perform("circles_import" = op, {circle_name, username}, scope) do
+    with {:ok, user} <- AdapterUtils.get_by_url_ap_id_or_username(username),
+         {:ok, circle} <-
+           Bonfire.Boundaries.Circles.get_or_create(circle_name, Utils.current_user(scope)),
+         {:ok, _encircle} <- Bonfire.Boundaries.Circles.add_to_circles(user, circle) do
+      :ok
+    else
+      error -> handle_error(op, "#{circle_name}; #{username}", error)
     end
   end
 
