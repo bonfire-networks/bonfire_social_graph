@@ -439,14 +439,14 @@ defmodule Bonfire.Social.Graph.Import do
       # Generate ULID based on original activity date
       pointer_id =
         (published || Bonfire.Common.DatesTimes.date_from_pointer(object_pointer_id))
-        |> flood("found_activity_date")
+        |> debug("found_activity_date")
         |> Bonfire.Common.DatesTimes.generate_ulid_if_past()
-        |> flood("generated_pointer_id")
+        |> debug("generated_pointer_id")
 
       # Create boost locally without federating, with original date
 
       Bonfire.Social.Boosts.boost(user, object, skip_federation: true, pointer_id: pointer_id)
-      |> flood("maybe_boosted")
+      |> debug("maybe_boosted")
     else
       {:error, :not_found} ->
         error(id, "Could not find object to import")
