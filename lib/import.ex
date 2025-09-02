@@ -32,6 +32,8 @@ defmodule Bonfire.Social.Graph.Import do
   def import_from_csv_file(:blocks, scope, path), do: blocks_from_csv_file(scope, path)
   def import_from_csv_file(:bookmarks, scope, path), do: bookmarks_from_csv_file(scope, path)
   def import_from_csv_file(:circles, scope, path), do: circles_from_csv_file(scope, path)
+  def import_from_csv_file(:likes, scope, path), do: likes_from_csv_file(scope, path)
+  def import_from_csv_file(:boosts, scope, path), do: boosts_from_csv_file(scope, path)
 
   def import_from_csv_file(:outbox = type, scope, path),
     do: import_from_json_file(type, scope, path)
@@ -64,10 +66,12 @@ defmodule Bonfire.Social.Graph.Import do
   def import_from_json(:outbox = _type, user_id, outbox_data, opts \\ []) do
     activities = Map.get(outbox_data, "orderedItems", [])
 
+    op = if(opts[:include_boosts], do: "outbox_import", else: "outbox_creations_import")
+
     with {:ok, user} <- Users.by_username(user_id) do
       activities
       # TODO: should we only save the type and object id in the queue metadata?
-      |> enqueue_many("outbox_import", user_id, ...)
+      |> enqueue_many(op, user_id, ...)
     else
       error ->
         error(error, "Failed to find user for outbox import")
@@ -124,6 +128,22 @@ defmodule Bonfire.Social.Graph.Import do
 
   defp circles_from_csv(scope, csv) do
     process_csv("circles_import", scope, csv, false)
+  end
+
+  defp likes_from_csv_file(scope, path) do
+    likes_from_csv(scope, read_file(path))
+  end
+
+  defp likes_from_csv(scope, csv) do
+    process_csv("likes_import", scope, csv, false)
+  end
+
+  defp boosts_from_csv_file(scope, path) do
+    boosts_from_csv(scope, read_file(path))
+  end
+
+  defp boosts_from_csv(scope, csv) do
+    process_csv("boosts_import", scope, csv, false)
   end
 
   defp read_file(path) do
@@ -376,11 +396,25 @@ defmodule Bonfire.Social.Graph.Import do
 
   def perform("bookmarks_import" = op, identifier, scope) do
     with {:ok, %{} = bookmarkable} <-
-           AdapterUtils.get_or_fetch_and_create_by_uri(identifier,
-             add_all_domains_as_instances: true
-           ),
+           AdapterUtils.get_or_fetch_and_create_by_uri(identifier),
          {:ok, _bookmark} <-
            Bonfire.Social.Bookmarks.bookmark(Utils.current_user(scope), bookmarkable) do
+      :ok
+    else
+      error -> handle_error(op, identifier, error)
+    end
+  end
+
+  def perform("likes_import" = op, identifier, scope) do
+    with {:ok, _like} <- import_object_action(:like, identifier, nil, Utils.current_user(scope)) do
+      :ok
+    else
+      error -> handle_error(op, identifier, error)
+    end
+  end
+
+  def perform("boosts_import" = op, identifier, scope) do
+    with {:ok, _boost} <- import_object_action(:boost, identifier, nil, Utils.current_user(scope)) do
       :ok
     else
       error -> handle_error(op, identifier, error)
@@ -398,8 +432,16 @@ defmodule Bonfire.Social.Graph.Import do
     end
   end
 
+  def perform("outbox_creations_import" = op, identifier, scope) do
+    with {:ok, _boost} <- process_json_activity(identifier, Utils.current_user(scope), false) do
+      :ok
+    else
+      error -> handle_error(op, identifier, error)
+    end
+  end
+
   def perform("outbox_import" = op, identifier, scope) do
-    with {:ok, _boost} <- process_json_activity(identifier, Utils.current_user(scope)) do
+    with {:ok, _boost} <- process_json_activity(identifier, Utils.current_user(scope), true) do
       :ok
     else
       error -> handle_error(op, identifier, error)
@@ -408,70 +450,149 @@ defmodule Bonfire.Social.Graph.Import do
 
   def perform(_, _, _), do: :ok
 
-  defp process_json_activity(%{"type" => verb, "object" => object} = activity, user)
-       when verb in ["Announce", "Create"] do
-    boost_object_from_uri(object, activity, user)
+  defp process_json_activity(
+         %{"type" => "Create", "object" => %{"id" => object_id} = object} = activity,
+         user,
+         _
+       ) do
+    # For Create activities with embedded objects, insert them directly without re-fetching
+    case maybe_insert_embedded_object(activity) |> flood("created_object") do
+      {:ok, %ActivityPub.Object{} = ap_object} ->
+        Utils.maybe_apply(
+          Bonfire.Federate.ActivityPub.AdapterUtils,
+          :return_pointable,
+          [ap_object, [current_user: user, verbs: [:boost]]]
+        )
+        ~> do_object_action(:boost, ..., nil, user)
+
+      {:ok, %{} = created_object} ->
+        do_object_action(:boost, created_object, nil, user)
+
+      e ->
+        e
+    end
   end
 
-  defp process_json_activity(%{"type" => type} = activity, _user) do
+  defp process_json_activity(%{"type" => "Create", "object" => object} = activity, user, _) do
+    import_object_action(:boost, object, activity, user)
+  end
+
+  defp process_json_activity(
+         %{"type" => "Announce", "object" => object} = activity,
+         user,
+         true = _include_boosts
+       ) do
+    import_object_action(:boost, object, activity, user)
+  end
+
+  defp process_json_activity(%{"type" => type} = activity, _user, _) do
     msg = "Skipping unsupported activity type: #{type}"
     debug(activity, msg)
-    {:error, msg}
+    {:ok, nil}
   end
 
-  defp process_json_activity(invalid_activity, _user)
+  defp process_json_activity(invalid_activity, _user, _)
        when is_nil(invalid_activity) or invalid_activity == %{} or invalid_activity == "" do
     msg = "Skipping empty activity"
     debug(invalid_activity, msg)
     {:ok, nil}
   end
 
-  defp process_json_activity(invalid_activity, _user) do
+  defp process_json_activity(invalid_activity, _user, _) do
     msg = "Skipping unsupported activity structure"
     debug(invalid_activity, msg)
-    {:error, msg}
+    {:ok, nil}
   end
 
-  defp boost_object_from_uri(id, published, user)
-       when (is_binary(id) and is_binary(published)) or is_nil(published) do
-    with {:ok, %{id: object_pointer_id} = object} <-
-           AdapterUtils.get_or_fetch_and_create_by_uri(id) do
-      # Generate ULID based on original activity date
-      pointer_id =
-        (published || Bonfire.Common.DatesTimes.date_from_pointer(object_pointer_id))
-        |> debug("found_activity_date")
-        |> Bonfire.Common.DatesTimes.generate_ulid_if_past()
-        |> debug("generated_pointer_id")
-
-      # Create boost locally without federating, with original date
-
-      Bonfire.Social.Boosts.boost(user, object, skip_federation: true, pointer_id: pointer_id)
-      |> debug("maybe_boosted")
+  defp import_object_action(action, id, published, user)
+       when is_binary(id) and (is_binary(published) or is_nil(published)) do
+    with {:ok, %{id: _} = object} <- AdapterUtils.get_or_fetch_and_create_by_uri(id) do
+      do_object_action(action, object, published, user)
     else
       {:error, :not_found} ->
-        error(id, "Could not find object to import")
+        error(id, "Could not find object to #{action}")
 
       {:error, e} ->
-        error(e, "Could not find object to import: #{id}")
+        error(e, "Could not fetch object to #{action}: #{id}")
         {:error, e}
 
       error ->
-        error(error, "Failed to fetch object to import")
+        error(error, "Failed to fetch object to #{action}")
     end
   end
 
-  defp boost_object_from_uri(%{"id" => id} = object, activity, user) do
-    # TODO: do we want to use the object without refetching, in case the instance is down?
-    boost_object_from_uri(id, e(activity, "published", nil) || e(object, "published", nil), user)
+  defp import_object_action(action, %{"id" => id} = object, activity, user) do
+    import_object_action(
+      action,
+      id,
+      e(activity, "published", nil) || e(object, "published", nil),
+      user
+    )
   end
 
-  defp boost_object_from_uri(object, activity, user) when is_map(activity) do
-    # TODO: do we want to use the object without refetching, in case the instance is down?
-    boost_object_from_uri(object, e(activity, "published", nil), user)
+  defp import_object_action(action, object, activity, user) when is_map(activity) do
+    import_object_action(action, object, e(activity, "published", nil), user)
   end
 
-  defp boost_object_from_uri(object, _activity, _user) do
-    error(object, "Invalid object to import")
+  defp import_object_action(action, object, _activity, _user) do
+    error(object, "Invalid object to #{action}")
+  end
+
+  defp do_object_action(action, %{id: object_pointer_id} = object, published, user) do
+    # Generate ULID based on original activity date
+    pointer_id =
+      (published || Bonfire.Common.DatesTimes.date_from_pointer(object_pointer_id))
+      |> debug("found_activity_date")
+      |> Bonfire.Common.DatesTimes.generate_ulid_if_past()
+      |> debug("generated_pointer_id")
+
+    # Create action locally without federating, with original date
+    case action do
+      :like ->
+        Bonfire.Social.Likes.like(user, object, skip_federation: true, pointer_id: pointer_id)
+        |> debug("maybe_liked")
+
+      :boost ->
+        Bonfire.Social.Boosts.boost(user, object, skip_federation: true, pointer_id: pointer_id)
+        |> debug("maybe_boosted")
+    end
+  end
+
+  @doc """
+  Attempts to insert an embedded JSON object directly into the ActivityPub database.
+  Returns {:ok, object_id} if successful, :not_embedded if it's just an ID, or {:error, reason} if failed.
+  """
+  defp maybe_insert_embedded_object(%{"object" => %{"id" => object_id} = _object} = activity) do
+    # Check if object already exists in cache
+    case ActivityPub.Object.get_cached(ap_id: object_id) do
+      {:ok, existing_object} ->
+        flood(object_id, "Object already exists in cache")
+
+        {:ok,
+         e(existing_object, :pointer, nil) || e(existing_object, :pointer_id, nil) ||
+           existing_object}
+
+      {:error, :not_found} ->
+        flood(object_id, "Object not cached, inserting embedded object directly")
+
+        # Insert the embedded object directly (without re-fetching)
+        with {:ok, inserted_object} <-
+               ActivityPub.Federator.Fetcher.cached_or_handle_incoming(activity,
+                 already_fetched: true
+               ) do
+          flood(inserted_object, "Successfully inserted embedded object")
+
+          {:ok,
+           e(inserted_object, :pointer, nil) || e(inserted_object, :pointer_id, nil) ||
+             inserted_object}
+        else
+          error ->
+            error(error, "Failed to insert embedded object #{object_id}")
+        end
+
+      error ->
+        error(error, "Error checking cache for #{object_id}")
+    end
   end
 
   # defp handle_error(op, identifier, {:error, error}) do
