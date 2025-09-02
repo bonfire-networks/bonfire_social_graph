@@ -11,6 +11,7 @@ defmodule Bonfire.Social.Graph.Import do
   import Untangle
   # alias Bonfire.Data.Identity.User
   # alias Bonfire.Me.Characters
+  use Bonfire.Common.E
   alias Bonfire.Common.Utils
   alias Bonfire.Me.Users
   alias Bonfire.Social.Graph.Follows
@@ -32,8 +33,46 @@ defmodule Bonfire.Social.Graph.Import do
   def import_from_csv_file(:bookmarks, scope, path), do: bookmarks_from_csv_file(scope, path)
   def import_from_csv_file(:circles, scope, path), do: circles_from_csv_file(scope, path)
 
+  def import_from_csv_file(:outbox = type, scope, path),
+    do: import_from_json_file(type, scope, path)
+
   def import_from_csv_file(_other, _user, _path),
     do: error("Please select a valid type of import")
+
+  @doc """
+  Import user's outbox (posts and activities) from a JSON file.
+
+  ## Examples
+
+      iex> import_from_json_file("user_id", "path/to/outbox.json")
+      %{imported: 5, boosted: 3, errors: 1}
+
+  """
+  def import_from_json_file(type, user_id, path, opts \\ []) do
+    with {:ok, json_content} <- File.read(path),
+         {:ok, outbox_data} <- Jason.decode(json_content) do
+      import_from_json(type, user_id, outbox_data, opts)
+    else
+      error ->
+        error(error, "Failed to read or parse JSON file")
+    end
+  end
+
+  @doc """
+  Import user's outbox from parsed JSON data.
+  """
+  def import_from_json(:outbox = _type, user_id, outbox_data, opts \\ []) do
+    activities = Map.get(outbox_data, "orderedItems", [])
+
+    with {:ok, user} <- Users.by_username(user_id) do
+      activities
+      # TODO: should we only save the type and object id in the queue metadata?
+      |> enqueue_many("outbox_import", user_id, ...)
+    else
+      error ->
+        error(error, "Failed to find user for outbox import")
+    end
+  end
 
   defp follows_from_csv_file(scope, path) do
     follows_from_csv(scope, read_file(path))
@@ -228,7 +267,7 @@ defmodule Bonfire.Social.Graph.Import do
   defp results_return(results) do
     results
     |> Enum.frequencies_by(fn
-      {:ok, %{errors: errors}} when is_list(errors) and errors != [] ->
+      {:ok, %{errors: errors}} when is_list(errors) and errors != [] and not is_nil(errors) ->
         error(errors, "import error")
         :error
 
@@ -359,7 +398,81 @@ defmodule Bonfire.Social.Graph.Import do
     end
   end
 
+  def perform("outbox_import" = op, identifier, scope) do
+    with {:ok, _boost} <- process_json_activity(identifier, Utils.current_user(scope)) do
+      :ok
+    else
+      error -> handle_error(op, identifier, error)
+    end
+  end
+
   def perform(_, _, _), do: :ok
+
+  defp process_json_activity(%{"type" => verb, "object" => object} = activity, user)
+       when verb in ["Announce", "Create"] do
+    boost_object_from_uri(object, activity, user)
+  end
+
+  defp process_json_activity(%{"type" => type} = activity, _user) do
+    msg = "Skipping unsupported activity type: #{type}"
+    debug(activity, msg)
+    {:error, msg}
+  end
+
+  defp process_json_activity(invalid_activity, _user)
+       when is_nil(invalid_activity) or invalid_activity == %{} or invalid_activity == "" do
+    msg = "Skipping empty activity"
+    debug(invalid_activity, msg)
+    {:ok, nil}
+  end
+
+  defp process_json_activity(invalid_activity, _user) do
+    msg = "Skipping unsupported activity structure"
+    debug(invalid_activity, msg)
+    {:error, msg}
+  end
+
+  defp boost_object_from_uri(id, published, user)
+       when (is_binary(id) and is_binary(published)) or is_nil(published) do
+    with {:ok, %{id: object_pointer_id} = object} <-
+           AdapterUtils.get_or_fetch_and_create_by_uri(id) do
+      # Generate ULID based on original activity date
+      pointer_id =
+        (published || Bonfire.Common.DatesTimes.date_from_pointer(object_pointer_id))
+        |> flood("found_activity_date")
+        |> Bonfire.Common.DatesTimes.generate_ulid_if_past()
+        |> flood("generated_pointer_id")
+
+      # Create boost locally without federating, with original date
+
+      Bonfire.Social.Boosts.boost(user, object, skip_federation: true, pointer_id: pointer_id)
+      |> flood("maybe_boosted")
+    else
+      {:error, :not_found} ->
+        error(id, "Could not find object to import")
+
+      {:error, e} ->
+        error(e, "Could not find object to import: #{id}")
+        {:error, e}
+
+      error ->
+        error(error, "Failed to fetch object to import")
+    end
+  end
+
+  defp boost_object_from_uri(%{"id" => id} = object, activity, user) do
+    # TODO: do we want to use the object without refetching, in case the instance is down?
+    boost_object_from_uri(id, e(activity, "published", nil) || e(object, "published", nil), user)
+  end
+
+  defp boost_object_from_uri(object, activity, user) when is_map(activity) do
+    # TODO: do we want to use the object without refetching, in case the instance is down?
+    boost_object_from_uri(object, e(activity, "published", nil), user)
+  end
+
+  defp boost_object_from_uri(object, _activity, _user) do
+    error(object, "Invalid object to import")
+  end
 
   # defp handle_error(op, identifier, {:error, error}) do
   #   handle_error(op, identifier, error)
@@ -369,8 +482,13 @@ defmodule Bonfire.Social.Graph.Import do
   #   error(error)
   # end
 
-  defp handle_error(op, identifier, error) do
+  defp handle_error(op, identifier, error) when is_binary(identifier) do
     error(error, "could not import #{identifier}")
+    {:error, Bonfire.Common.Errors.error_msg(error)}
+  end
+
+  defp handle_error(op, identifier, error) do
+    error(error, "could not import #{inspect(identifier)}")
     {:error, Bonfire.Common.Errors.error_msg(error)}
   end
 end
