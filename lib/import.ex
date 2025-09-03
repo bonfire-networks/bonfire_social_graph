@@ -456,7 +456,7 @@ defmodule Bonfire.Social.Graph.Import do
          _
        ) do
     # For Create activities with embedded objects, insert them directly without re-fetching
-    case maybe_insert_embedded_object(activity, user) |> flood("created_object") do
+    case maybe_insert_embedded_object(activity, user) |> debug("created_object") do
       {:ok, %ActivityPub.Object{} = ap_object} ->
         Utils.maybe_apply(
           Bonfire.Federate.ActivityPub.AdapterUtils,
@@ -574,7 +574,7 @@ defmodule Bonfire.Social.Graph.Import do
       fetch_collection: :async,
       fetch_collection_entries: :async
     )
-    |> flood("called fetch_thread_async")
+    |> debug("called fetch_thread_async")
 
     {:ok, object}
   end
@@ -590,14 +590,14 @@ defmodule Bonfire.Social.Graph.Import do
     # Check if object already exists in cache
     case ActivityPub.Object.get_cached(ap_id: object_id) do
       {:ok, existing_object} ->
-        flood(object_id, "Object already exists in cache")
+        debug(object_id, "Object already exists in cache")
 
         {:ok,
          e(existing_object, :pointer, nil) || e(existing_object, :pointer_id, nil) ||
            existing_object}
 
       {:error, :not_found} ->
-        flood(object_id, "Object not cached, inserting embedded object directly")
+        debug(object_id, "Object not cached, inserting embedded object directly")
 
         # Insert the embedded object directly (without re-fetching)
         with {:ok, inserted_object} <-
@@ -605,7 +605,7 @@ defmodule Bonfire.Social.Graph.Import do
                  already_fetched: true
                ) do
           fetch_thread_async(inserted_object, user)
-          |> flood("Successfully inserted embedded object + scheduled thread fetching")
+          |> debug("Successfully inserted embedded object + scheduled thread fetching")
 
           {:ok,
            e(inserted_object, :pointer, nil) || e(inserted_object, :pointer_id, nil) ||
