@@ -456,7 +456,7 @@ defmodule Bonfire.Social.Graph.Import do
          _
        ) do
     # For Create activities with embedded objects, insert them directly without re-fetching
-    case maybe_insert_embedded_object(activity) |> flood("created_object") do
+    case maybe_insert_embedded_object(activity, user) |> flood("created_object") do
       {:ok, %ActivityPub.Object{} = ap_object} ->
         Utils.maybe_apply(
           Bonfire.Federate.ActivityPub.AdapterUtils,
@@ -474,7 +474,13 @@ defmodule Bonfire.Social.Graph.Import do
   end
 
   defp process_json_activity(%{"type" => "Create", "object" => object} = activity, user, _) do
-    import_object_action(:boost, object, activity, user)
+    # For other Create activities, fetched the object before boosting
+    with {:ok, boost} <- import_object_action(:boost, object, activity, user) do
+      if object = e(boost, :edge, :object, nil) || e(boost, :edge, :object_id, nil),
+        do: fetch_thread_async(object, user)
+
+      {:ok, boost}
+    end
   end
 
   defp process_json_activity(
@@ -558,11 +564,29 @@ defmodule Bonfire.Social.Graph.Import do
     end
   end
 
+  defp fetch_thread_async(object, user) do
+    # TODO: configurable whether user wants to do this?
+    ActivityPub.Federator.Fetcher.fetch_thread(
+      object,
+      user_id: Utils.id(user),
+      # TODO: clean/document these?
+      mode: :async,
+      fetch_collection: :async,
+      fetch_collection_entries: :async
+    )
+    |> flood("called fetch_thread_async")
+
+    {:ok, object}
+  end
+
   @doc """
   Attempts to insert an embedded JSON object directly into the ActivityPub database.
   Returns {:ok, object_id} if successful, :not_embedded if it's just an ID, or {:error, reason} if failed.
   """
-  defp maybe_insert_embedded_object(%{"object" => %{"id" => object_id} = _object} = activity) do
+  defp maybe_insert_embedded_object(
+         %{"object" => %{"id" => object_id} = _object} = activity,
+         user
+       ) do
     # Check if object already exists in cache
     case ActivityPub.Object.get_cached(ap_id: object_id) do
       {:ok, existing_object} ->
@@ -580,7 +604,8 @@ defmodule Bonfire.Social.Graph.Import do
                ActivityPub.Federator.Fetcher.cached_or_handle_incoming(activity,
                  already_fetched: true
                ) do
-          flood(inserted_object, "Successfully inserted embedded object")
+          fetch_thread_async(inserted_object, user)
+          |> flood("Successfully inserted embedded object + scheduled thread fetching")
 
           {:ok,
            e(inserted_object, :pointer, nil) || e(inserted_object, :pointer_id, nil) ||
