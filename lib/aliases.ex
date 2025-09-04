@@ -90,7 +90,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   def add(%{} = user, target, opts) when is_binary(target) do
     opts =
       Keyword.merge(opts,
-        return_html: true,
+        return_html_as_fallback: true,
         rel_me_urls: [URIs.url_path(user), URIs.canonical_url(user)]
       )
       |> debug("urllls")
@@ -102,13 +102,13 @@ defmodule Bonfire.Social.Graph.Aliases do
            ) do
       add(user, target, opts)
     else
-      {:html, data} ->
+      {:ok, %{body: body}} ->
         info(target, "was not an AP actor, add as URL instead")
 
         add_link_preview(
           user,
           target,
-          fn url, opts -> Unfurl.unfurl_html(url, data, opts) end,
+          fn url, opts -> Unfurl.unfurl_html(url, body, opts) end,
           opts
         )
 
