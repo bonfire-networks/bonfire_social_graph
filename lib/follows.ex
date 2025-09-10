@@ -521,11 +521,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
       if opts[:incoming] != true,
         do: ap_publish_activity(user, :delete, object),
-        else: deleted_edges || deleted_activities
-
-      # Social.maybe_federate(user, :unfollow, object)
-
-      # end
+        else: ok(deleted_edges || deleted_activities)
     else
       if requested?(user, object) do
         Requests.unrequest(user, Follow, object)

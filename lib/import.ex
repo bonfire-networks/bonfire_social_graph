@@ -13,6 +13,7 @@ defmodule Bonfire.Social.Graph.Import do
   # alias Bonfire.Me.Characters
   use Bonfire.Common.E
   alias Bonfire.Common.Utils
+  alias Bonfire.Common.Enums
   alias Bonfire.Me.Users
   alias Bonfire.Social.Graph.Follows
   alias Bonfire.Boundaries.Blocks
@@ -568,7 +569,7 @@ defmodule Bonfire.Social.Graph.Import do
     # TODO: configurable whether user wants to do this?
     ActivityPub.Federator.Fetcher.fetch_thread(
       object,
-      user_id: Utils.id(user),
+      user_id: Enums.id(user),
       # TODO: clean/document these?
       mode: :async,
       fetch_collection: :async,
