@@ -456,16 +456,16 @@ defmodule Bonfire.Social.Graph.Follows do
     debug(opts, "opts")
 
     repo().transact_with(fn ->
-      with {:ok, %{edge: %{object: object, subject: subject}} = request} <-
+      with {:ok, %{edge: %{object: object, subject: follower}} = request} <-
              Requests.accept_and_delete(request, Follow, opts),
            {:ok, follow} <-
-             follow_with_side_effects(subject, object, opts) |> debug("accept_do_follow"),
+             follow_with_side_effects(follower, object, opts) |> debug("accept_do_follow"),
            :ok <-
              if(opts[:incoming] != true,
                do:
                  Requests.ap_publish_activity(
-                   subject,
-                   {:accept_from, e(follow.edge, :object, nil) || follow.edge.object_id},
+                   e(follow.edge, :object, nil) || follow.edge.object_id,
+                   {:accept_to, follower},
                    request
                  ),
                else: :ok
@@ -476,6 +476,14 @@ defmodule Bonfire.Social.Graph.Follows do
           error(e, l("An error occurred while accepting the follow request"))
       end
     end)
+  end
+
+  def reject(follower, followed, opts \\ []) do
+    with {:ok, request} <-
+           Requests.get(follower, Follow, followed, skip_boundary_check: true),
+         {:ok, request} <- ignore(request, opts ++ [current_user: followed]) do
+      {:ok, request}
+    end
   end
 
   @doc """
@@ -1143,14 +1151,6 @@ defmodule Bonfire.Social.Graph.Follows do
            ),
          [id] <- unfollow(follower, object, incoming: true) do
       {:ok, id}
-    end
-  end
-
-  defp reject(follower, followed, opts \\ []) do
-    with {:ok, request} <-
-           Requests.get(follower, Follow, followed, skip_boundary_check: true),
-         {:ok, request} <- ignore(request, opts ++ [current_user: followed]) do
-      {:ok, request}
     end
   end
 end
