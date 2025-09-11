@@ -1040,8 +1040,8 @@ defmodule Bonfire.Social.Graph.Follows do
          false <- following?(follower, followed),
          {:ok, %Follow{} = follow} <-
            follow(follower, followed, current_user: follower, incoming: true) |> debug("fffff") do
-      with {:ok, _accept_activity, _adapter_object, _accepted_activity} = accept <-
-             ActivityPub.accept_activity(%{
+      with {:ok, _} = accept <-
+             ActivityPub.accept(%{
                actor: object,
                to: [data["actor"]],
                object: data,
