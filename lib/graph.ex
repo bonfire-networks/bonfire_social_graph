@@ -4,11 +4,12 @@ defmodule Bonfire.Social.Graph do
   use GenServer
   use Arrows
   use Bonfire.Common.Utils
+  # alias Bolt.Sips, as: Boltx
 
   @doc """
   Retrieves the possible applications to be started based on configuration.
 
-  Returns a list of OTP applications (including the `Bolt.Sips` Neo4j driver to connect to the graph database) or an empty list if disabled.
+  Returns a list of OTP applications (including the Bolt Neo4j driver to connect to the graph database) or an empty list if disabled.
   """
   def maybe_applications() do
     case config() do
@@ -21,7 +22,10 @@ defmodule Bonfire.Social.Graph do
         []
 
       config ->
-        [{Bolt.Sips, config}, Bonfire.Social.Graph]
+        [
+          {Boltx, config},
+          Bonfire.Social.Graph
+        ]
     end
   end
 
@@ -100,7 +104,7 @@ defmodule Bonfire.Social.Graph do
   defp config,
     do:
       module_enabled?(Bonfire.Social.Graph) and Config.get(:env) != :test and
-        Application.get_env(:bolt_sips, Bolt)
+        Application.get_env(:boltx, Boltx)
 
   defp disabled?, do: !config()
 
@@ -108,7 +112,7 @@ defmodule Bonfire.Social.Graph do
   Retrieves the graph DB connection.
   """
   def graph_conn() do
-    if !disabled?(), do: Bolt.Sips.conn()
+    if !disabled?(), do: Boltx.conn()
   catch
     :exit, reason ->
       error(reason)
@@ -129,7 +133,7 @@ defmodule Bonfire.Social.Graph do
         nil
 
       graph_conn ->
-        Bolt.Sips.query(graph_conn, query)
+        Boltx.query(graph_conn, query)
     end
   catch
     :exit, reason ->
@@ -142,7 +146,8 @@ defmodule Bonfire.Social.Graph do
     [
       {Bonfire.Data.Social.Follow, [rank: 2, rel_name: "FOLLOWS"]}
     ]
-    |> debug()
+
+    # |> debug()
   end
 
   @doc """

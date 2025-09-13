@@ -8,4 +8,5 @@ needle = "~> 0.7"
 arrows = "~> 0.2"
 
 # graphDB
-bolt_sips = "~> 2.0.11"
+# bolt_sips = "~> 2.0.11"
+boltx = "~> 0.0.6"
