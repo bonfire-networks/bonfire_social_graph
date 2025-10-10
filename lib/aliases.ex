@@ -136,7 +136,7 @@ defmodule Bonfire.Social.Graph.Aliases do
   defp add_link_preview(user, target, fetch_fn, opts) do
     # add_link(user, target, "link", %{}, opts)
     with %{} = media <-
-           maybe_apply(Bonfire.Files.Acts.URLPreviews, :maybe_fetch_and_save, [
+           maybe_apply(Bonfire.Files.Media, :maybe_fetch_and_save, [
              user,
              target,
              opts
