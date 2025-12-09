@@ -43,6 +43,8 @@ defmodule Bonfire.Social.Graph.Follows do
       {"Reject", "Follow"}
     ]
 
+  @hashtag_table_id "7HASHTAG1SPART0FF01KS0N0MY"
+
   @doc """
   Checks if a subject is following an object.
 
@@ -241,6 +243,14 @@ defmodule Bonfire.Social.Graph.Follows do
     follows ++ requests
   end
 
+  defp skip_boundary_check_type?(object) do
+    types = Application.get_env(:bonfire_social_graph, :skip_boundary_check_types, [])
+
+    Enum.any?(types, fn type ->
+      Bonfire.Common.Types.object_type(object) == type
+    end)
+  end
+
   defp check_follow(follower, object, opts) do
     # debug(opts)
     # debug(id(follower))
@@ -250,7 +260,8 @@ defmodule Bonfire.Social.Graph.Follows do
     skip? =
       skip? == true ||
         (skip? == :admins and
-           maybe_apply(Bonfire.Me.Accounts, :is_admin?, follower, fallback_return: nil) == true)
+           maybe_apply(Bonfire.Me.Accounts, :is_admin?, follower, fallback_return: nil) == true) ||
+        skip_boundary_check_type?(object)
 
     opts =
       opts
@@ -713,13 +724,12 @@ defmodule Bonfire.Social.Graph.Follows do
       iex> Bonfire.Social.Graph.Follows.all_followed_outboxes(user, include_followed_categories: true)
       ["outbox_id_1", "category_outbox_id_1", ...]
   """
-  def all_followed_outboxes(user, opts \\ []) do
-    include_followed_categories = opts[:include_followed_categories]
 
+  def all_followed_outboxes(user, opts \\ []) do
     Cache.maybe_apply_cached(
-      &fetch_all_followed_outboxes/3,
-      [user, include_followed_categories, opts],
-      opts ++ [cache_key: "my_followed:#{include_followed_categories == true}:#{id(user)}"]
+      &fetch_all_followed_outboxes/2,
+      [user, opts],
+      opts ++ [cache_key: "my_followed:#{opts[:include_followed_categories] == true}:#{id(user)}"]
     )
   end
 
@@ -728,14 +738,18 @@ defmodule Bonfire.Social.Graph.Follows do
     Cache.remove("my_followed:false:#{id(user)}")
   end
 
-  defp fetch_all_followed_outboxes(user, include_categories, opts) do
-    if(include_categories != true,
+  defp fetch_all_followed_outboxes(user, opts) do
+    if(opts[:include_followed_categories] != true,
       do: opts ++ [filters: [exclude_object_types: Bonfire.Classify.Category]],
       else: opts
     )
     |> all_objects_by_subject(user, ...)
-    # |> debug()
-    |> Enum.map(&e(&1, :character, :outbox_id, nil))
+    |> debug("fetched followed objects")
+    |> Enum.map(
+      &(e(&1, :character, :outbox_id, nil) ||
+          (e(&1, :table_id, nil) == @hashtag_table_id && id(&1)) || nil)
+    )
+    |> Enum.reject(&is_nil/1)
   end
 
   # defp query_base(filters, opts) do
