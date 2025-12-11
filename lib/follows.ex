@@ -466,27 +466,25 @@ defmodule Bonfire.Social.Graph.Follows do
   def accept(request, opts) do
     debug(opts, "opts")
 
-    repo().transact_with(fn ->
-      with {:ok, %{edge: %{object: object, subject: follower}} = request} <-
-             Requests.accept_and_delete(request, Follow, opts),
-           {:ok, follow} <-
-             follow_with_side_effects(follower, object, opts) |> debug("accept_do_follow"),
-           :ok <-
-             if(opts[:incoming] != true,
-               do:
-                 Requests.ap_publish_activity(
-                   e(follow.edge, :object, nil) || follow.edge.object_id,
-                   {:accept_to, follower},
-                   request
-                 ),
-               else: :ok
-             ) do
-        {:ok, follow}
-      else
-        e ->
-          error(e, l("An error occurred while accepting the follow request"))
-      end
-    end)
+    with {:ok, %{edge: %{object: object, subject: follower}} = request} <-
+           Requests.accept_and_delete(request, Follow, opts),
+         {:ok, follow} <-
+           follow_with_side_effects(follower, object, opts) |> debug("accept_do_follow"),
+         :ok <-
+           if(opts[:incoming] != true,
+             do:
+               Requests.ap_publish_activity(
+                 e(follow.edge, :object, nil) || follow.edge.object_id,
+                 {:accept_to, follower},
+                 request
+               ),
+             else: :ok
+           ) do
+      {:ok, follow}
+    else
+      e ->
+        error(e, l("An error occurred while accepting the follow request"))
+    end
   end
 
   def reject(follower, followed, opts \\ []) do
