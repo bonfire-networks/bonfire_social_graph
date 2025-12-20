@@ -45,6 +45,27 @@ defmodule Bonfire.Social.Graph.Follows do
 
   @hashtag_table_id "7HASHTAG1SPART0FF01KS0N0MY"
 
+  @skip_warn_filters [
+    :preload,
+    :objects,
+    :subjects,
+    :activity_types,
+    :preload_type,
+    :object_types,
+    :exclude_object_types,
+    :subject_types,
+    :current_user,
+    :current_account,
+    :id,
+    :table_id,
+    :after,
+    :before,
+    :paginate,
+    :paginate?,
+    :return,
+    :stream_callback
+  ]
+
   @doc """
   Checks if a subject is following an object.
 
@@ -761,7 +782,7 @@ defmodule Bonfire.Social.Graph.Follows do
     filters = e(opts, :filters, []) ++ filters
 
     Edges.query_parent(Follow, filters, opts)
-    |> query_filter(Keyword.drop(filters, [:object, :subject]))
+    |> query_filter(Keyword.drop(filters, @skip_warn_filters))
 
     # |> debug("follows query")
   end
@@ -841,11 +862,19 @@ defmodule Bonfire.Social.Graph.Follows do
     # TODO: configurable boundaries for follows
     opts =
       to_options(opts) ++
-        [skip_boundary_check: true, preload: [:object_character, :object_profile]]
+        [
+          skip_boundary_check: true,
+          preload: opts[:preload] || [:object_character, :object_profile]
+        ]
 
-    [subjects: uid(user), object_types: opts[:type]]
+    [
+      subjects: uid(user),
+      object_types: opts[:type],
+      exclude_object_types: opts[:exclude_object_types]
+    ]
     |> query(opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
+    |> flood("listing followed query")
     # |> maybe_with_followed_profile_only(opts)
     |> Social.many(opts[:paginate], opts)
   end
