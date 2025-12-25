@@ -874,7 +874,7 @@ defmodule Bonfire.Social.Graph.Follows do
     ]
     |> query(opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
-    |> flood("listing followed query")
+    |> debug("listing followed query")
     # |> maybe_with_followed_profile_only(opts)
     |> Social.many(opts[:paginate], opts)
   end
