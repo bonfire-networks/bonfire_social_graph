@@ -652,6 +652,7 @@ defmodule Bonfire.Social.Graph.Follows do
     |> Keyword.put_new(:preload, :object_character)
     |> query([subjects: user], ...)
     |> repo().many()
+    |> debug("follows by subject")
   end
 
   @doc """
@@ -673,7 +674,7 @@ defmodule Bonfire.Social.Graph.Follows do
   """
   def all_objects_by_subject(user, opts \\ []) do
     all_by_subject(user, opts)
-    |> Enum.map(&e(&1, :edge, :object, nil))
+    |> Enum.map(&(e(&1, :edge, :object, nil) || &1))
   end
 
   @doc """
@@ -699,6 +700,7 @@ defmodule Bonfire.Social.Graph.Follows do
     |> Keyword.put_new(:preload, :subject_character)
     |> query([objects: user], ...)
     |> repo().many()
+    |> debug("follows by object")
   end
 
   @doc """
@@ -720,7 +722,7 @@ defmodule Bonfire.Social.Graph.Follows do
   """
   def all_subjects_by_object(user, opts \\ []) do
     all_by_object(user, opts)
-    |> Enum.map(&e(&1, :edge, :subject, nil))
+    |> Enum.map(&(e(&1, :edge, :subject, nil) || &1))
   end
 
   @doc """
@@ -864,7 +866,7 @@ defmodule Bonfire.Social.Graph.Follows do
       to_options(opts) ++
         [
           skip_boundary_check: true,
-          preload: opts[:preload] || [:object_character, :object_profile]
+          preload: opts[:preload] || :object_profile
         ]
 
     [
@@ -921,7 +923,8 @@ defmodule Bonfire.Social.Graph.Follows do
       [%User{}, ...]
   """
   def list_followers(user, opts \\ []) do
-    opts = to_options(opts) ++ [skip_boundary_check: true, preload: :subject]
+    opts =
+      to_options(opts) ++ [skip_boundary_check: true, preload: opts[:preload] || :subject_profile]
 
     [objects: uid(user), subject_types: opts[:type]]
     |> query(opts)
