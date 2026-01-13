@@ -290,7 +290,13 @@ defmodule Bonfire.Social.Graph.Follows do
       |> Keyword.put_new(:current_user, follower)
       |> Keyword.put_new(:skip_boundary_check, skip?)
 
+    follower_id = Enums.id(follower)
+
     case uid(object) do
+      id when id == follower_id ->
+        error(follower_id, "cannot follow yourself")
+        {:error, :not_permitted}
+
       id when is_binary(id) ->
         case Bonfire.Boundaries.load_pointer(id, opts) |> debug("loaded_pointer") do
           object when is_struct(object) ->
