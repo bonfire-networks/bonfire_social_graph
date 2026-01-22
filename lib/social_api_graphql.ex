@@ -48,7 +48,7 @@
 #       end
 
 #       # field(:object_id, :string)
-#       field :object, :any_context do
+#       field :object, :any_object do
 #         resolve(&activity_object/3)
 
 #         # fn
