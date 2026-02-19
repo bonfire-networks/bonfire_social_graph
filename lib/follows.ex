@@ -209,6 +209,10 @@ defmodule Bonfire.Social.Graph.Follows do
           {:error, :not_permitted}
         end
 
+      {:error, :self_follow} ->
+        error("cannot follow yourself, not creating a request")
+        {:error, :self_follow}
+
       {:error, :not_permitted} ->
         info("not permitted to follow, attempting a request instead")
         Requests.request(follower, Follow, object, opts)
@@ -295,7 +299,7 @@ defmodule Bonfire.Social.Graph.Follows do
     case uid(object) do
       id when id == follower_id ->
         error(follower_id, "cannot follow yourself")
-        {:error, :not_permitted}
+        {:error, :self_follow}
 
       id when is_binary(id) ->
         case Bonfire.Boundaries.load_pointer(id, opts) |> debug("loaded_pointer") do
@@ -328,6 +332,11 @@ defmodule Bonfire.Social.Graph.Follows do
 
     to_feeds_ids = FeedActivities.get_publish_feed_ids(to_feeds)
 
+    # compute notification-only feed IDs separately so we only notify the followed user, not the follower
+    notify_feed_ids =
+      FeedActivities.get_publish_feed_ids(notifications: [object])
+      |> uids()
+
     Keyword.merge(
       [
         # TODO: make configurable (currently public is required so follows can be listed by AP adapter)
@@ -337,7 +346,8 @@ defmodule Bonfire.Social.Graph.Follows do
         # put it in our outbox and their notifications
         to_feeds: to_feeds,
         # FIXME: should not compute feed ids twice (also done when casting the edge activity)
-        to_feeds_ids: to_feeds_ids
+        to_feeds_ids: to_feeds_ids,
+        notify_feed_ids: notify_feed_ids
       ],
       opts
     )
@@ -351,7 +361,7 @@ defmodule Bonfire.Social.Graph.Follows do
         opts[:to_feeds_ids],
         follow,
         object,
-        [push_to_thread: false, notify: true]
+        [push_to_thread: false, notify: opts[:notify_feed_ids] || true]
       ])
 
       {:ok, follow}

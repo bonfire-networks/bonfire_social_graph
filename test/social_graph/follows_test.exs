@@ -1,5 +1,5 @@
 defmodule Bonfire.Social.Graph.FollowsTest do
-  use Bonfire.Social.Graph.DataCase, async: true
+  use Bonfire.DataCase, async: true
 
   alias Bonfire.Social.Graph.Follows
   alias Bonfire.Social.Bonfire.Social.FeedLoader
@@ -135,5 +135,39 @@ defmodule Bonfire.Social.Graph.FollowsTest do
 
     # debug(followed: followed)
     # debug(notifications: activity)
+  end
+
+  test "cannot follow yourself - returns error without creating a request" do
+    me = Fake.fake_user!()
+
+    assert {:error, :self_follow} = Follows.follow(me, me)
+
+    refute Follows.following?(me, me)
+    refute Follows.requested?(me, me)
+  end
+
+  test "following someone does not create a self-referencing notification for the follower" do
+    follower = Fake.fake_user!()
+    followed = Fake.fake_user!()
+    assert {:ok, _follow} = Follows.follow(follower, followed)
+
+    # the followed user should get a notification
+    assert %{edges: [notification | _]} =
+             Bonfire.Social.FeedLoader.feed(:notifications, current_user: followed)
+
+    assert notification.activity.object_id == followed.id
+    assert notification.activity.subject_id == follower.id
+
+    # the follower should NOT get a self-referencing notification
+    case Bonfire.Social.FeedLoader.feed(:notifications, current_user: follower) do
+      %{edges: notifications} when is_list(notifications) ->
+        Enum.each(notifications, fn notif ->
+          refute notif.activity.subject_id == notif.activity.object_id,
+                 "found self-referencing notification where subject == object"
+        end)
+
+      _ ->
+        :ok
+    end
   end
 end
