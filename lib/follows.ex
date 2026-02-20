@@ -715,6 +715,7 @@ defmodule Bonfire.Social.Graph.Follows do
     # |> Keyword.put_new(:current_user, user)
     |> Keyword.put_new(:preload, :subject_character)
     |> query([objects: user], ...)
+    |> where([edge: edge], edge.subject_id not in ^e(opts, :exclude_ids, []))
     |> repo().many()
     |> debug("follows by object")
   end
