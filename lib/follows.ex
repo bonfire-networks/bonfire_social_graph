@@ -945,7 +945,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
     [objects: uid(user), subject_types: opts[:type]]
     |> query(opts)
-    |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
+    |> where([edge: edge], edge.subject_id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_follower_profile_only(opts)
     |> Social.many(opts[:paginate], opts)
   end
