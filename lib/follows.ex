@@ -777,17 +777,22 @@ defmodule Bonfire.Social.Graph.Follows do
   end
 
   defp fetch_all_followed_outboxes(user, opts) do
-    if(opts[:include_followed_categories] != true,
-      do: opts ++ [filters: [exclude_object_types: Bonfire.Classify.Category]],
-      else: opts
-    )
-    |> all_objects_by_subject(user, ...)
-    |> debug("fetched followed objects")
-    |> Enum.map(
-      &(e(&1, :character, :outbox_id, nil) ||
-          (e(&1, :table_id, nil) == @hashtag_table_id && id(&1)) || nil)
-    )
-    |> Enum.reject(&is_nil/1)
+    :telemetry.span([:bonfire, :follows, :fetch_all_followed_outboxes], %{}, fn ->
+      result =
+        if(opts[:include_followed_categories] != true,
+          do: opts ++ [filters: [exclude_object_types: Bonfire.Classify.Category]],
+          else: opts
+        )
+        |> all_objects_by_subject(user, ...)
+        |> debug("fetched followed objects")
+        |> Enum.map(
+          &(e(&1, :character, :outbox_id, nil) ||
+              (e(&1, :table_id, nil) == @hashtag_table_id && id(&1)) || nil)
+        )
+        |> Enum.reject(&is_nil/1)
+
+      {result, %{count: length(result)}}
+    end)
   end
 
   # defp query_base(filters, opts) do
