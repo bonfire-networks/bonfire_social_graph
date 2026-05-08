@@ -29,7 +29,7 @@ defmodule Bonfire.Social.Graph.MixProject do
           {:bonfire_api_graphql,
            git: "https://github.com/bonfire-networks/bonfire_api_graphql",
            optional: true, runtime: false},
-          {:absinthe, "~> 1.7", optional: true}
+          {:absinthe, "~> 1.10", optional: true}
         ])
     ]
   end
