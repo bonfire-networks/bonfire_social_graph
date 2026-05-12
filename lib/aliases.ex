@@ -375,7 +375,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     |> query(opts)
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
     |> debug()
-    |> Social.many(opts[:paginate], opts)
+    |> repo().many_maybe_paginated(opts[:paginate], opts)
     # follow pointers
     |> repo().maybe_preload([edge: [:object]], opts)
     |> debug()
@@ -413,7 +413,7 @@ defmodule Bonfire.Social.Graph.Aliases do
     |> query(opts)
     |> where([subject: subject], subject.id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_user_profile_only(opts)
-    |> Social.many(opts[:paginate], opts)
+    |> repo().many_maybe_paginated(opts[:paginate], opts)
   end
 
   # defp maybe_with_user_profile_only(q, true),

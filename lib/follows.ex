@@ -900,7 +900,7 @@ defmodule Bonfire.Social.Graph.Follows do
     |> where([object: object], object.id not in ^e(opts, :exclude_ids, []))
     |> debug("listing followed query")
     # |> maybe_with_followed_profile_only(opts)
-    |> Social.many(opts[:paginate], opts)
+    |> repo().many_maybe_paginated(opts[:paginate], opts)
   end
 
   @doc """
@@ -952,7 +952,7 @@ defmodule Bonfire.Social.Graph.Follows do
     |> query(opts)
     |> where([edge: edge], edge.subject_id not in ^e(opts, :exclude_ids, []))
     # |> maybe_with_follower_profile_only(opts)
-    |> Social.many(opts[:paginate], opts)
+    |> repo().many_maybe_paginated(opts[:paginate], opts)
   end
 
   # defp maybe_with_follower_profile_only(q, true),
