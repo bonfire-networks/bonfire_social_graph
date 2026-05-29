@@ -293,16 +293,23 @@ defmodule Bonfire.Social.Graph.Follows do
       |> Keyword.put_new(:verbs, [:follow])
       |> Keyword.put_new(:current_user, follower)
       |> Keyword.put_new(:skip_boundary_check, skip?)
+      |> info("check_follow opts")
 
     follower_id = Enums.id(follower)
 
-    case uid(object) do
+    Bonfire.Boundaries.Debug.debug_user_circles(follower)
+    |> info("load_query circles for current_user")
+
+    Bonfire.Boundaries.Debug.debug_object_acls(follower) |> info("load_query circles on object")
+    Bonfire.Boundaries.Debug.debug_object_acls(object) |> info("load_query ACLs on object")
+
+    case uid(object |> info("object to look up")) |> info("object uid to look up") do
       id when id == follower_id ->
         error(follower_id, "cannot follow yourself")
         {:error, :self_follow}
 
       id when is_binary(id) ->
-        case Bonfire.Boundaries.load_pointer(id, opts) |> debug("loaded_pointer") do
+        case Bonfire.Boundaries.load_pointer(id, opts) |> info("loaded_pointer") do
           object when is_struct(object) ->
             local_or_remote_object(object)
 
@@ -970,9 +977,11 @@ defmodule Bonfire.Social.Graph.Follows do
   #   ~> local_or_remote_object()
   # end
   defp local_or_remote_object(object) do
-    object = repo().maybe_preload(object, [:character, :peered, created: [creator: :peered]])
+    object =
+      repo().maybe_preload(object, [:character, :peered, created: [creator: :peered]])
+      |> info("preloaded object for follow")
 
-    if Social.is_local?(object) do
+    if Social.is_local?(object) |> info("local_or_remote_object is local?") do
       {:local, object}
     else
       {:remote, object}
