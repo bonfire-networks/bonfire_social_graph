@@ -297,11 +297,11 @@ defmodule Bonfire.Social.Graph.Follows do
 
     follower_id = Enums.id(follower)
 
-    Bonfire.Boundaries.Debug.debug_user_circles(follower)
-    |> info("load_query circles for current_user")
+    # Bonfire.Boundaries.Debug.debug_user_circles(follower)
+    # |> info("load_query circles for current_user")
 
-    Bonfire.Boundaries.Debug.debug_object_acls(follower) |> info("load_query circles on object")
-    Bonfire.Boundaries.Debug.debug_object_acls(object) |> info("load_query ACLs on object")
+    # Bonfire.Boundaries.Debug.debug_object_acls(follower) |> info("load_query circles on object")
+    # Bonfire.Boundaries.Debug.debug_object_acls(object) |> info("load_query ACLs on object")
 
     case uid(object |> info("object to look up")) |> info("object uid to look up") do
       id when id == follower_id ->
