@@ -478,33 +478,6 @@ defmodule Bonfire.Social.Graph.Aliases do
   end
 
   @doc """
-  Checks if a local user is also known as the target.
-
-  ## Examples
-
-      iex> Bonfire.Social.Graph.Aliases.also_known_as?("http://example.com/user", target)
-      true
-
-      iex> Bonfire.Social.Graph.Aliases.also_known_as?(%User{}, target)
-      true
-
-  """
-  def also_known_as?(local_ap_id, target) when is_binary(local_ap_id) do
-    with {:ok, %{data: data}} <-
-           ActivityPub.Actor.get_cached(pointer: target)
-           |> debug("aliased actor") do
-      ActivityPub.Actor.also_known_as?(
-        local_ap_id
-        |> debug("local_ap_id"),
-        data
-      )
-    end
-  end
-
-  def also_known_as?(%{} = character, target),
-    do: also_known_as?(Bonfire.Common.URIs.canonical_url(character), target)
-
-  @doc """
   Publishes an ActivityPub activity for a move operation.
 
   ## Examples
