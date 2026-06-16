@@ -1103,7 +1103,7 @@ defmodule Bonfire.Social.Graph.Follows do
   """
   def ap_receive_activity(
         follower,
-        %{data: %{"type" => "Follow"} = data} = _activity,
+        %{data: %{"type" => "Follow"} = data} = activity,
         object
       )
       when is_binary(follower) or is_struct(follower) do
@@ -1114,12 +1114,19 @@ defmodule Bonfire.Social.Graph.Follows do
          # check if not already following
          false <- following?(follower, followed),
          {:ok, %Follow{} = follow} <-
-           follow(follower, followed, current_user: follower, incoming: true) |> debug("fffff") do
+           follow(follower, followed, current_user: follower, incoming: true) do
       with {:ok, _} = accept <-
              ActivityPub.accept(%{
                actor: object,
                to: [data["actor"]],
-               object: data,
+               # pass the already-resolved Follow activity object directly so `accept` doesn't
+               # have to look it up by ap_id (which can miss, e.g. in allowlist-only/archipelago
+               # mode, returning `nil`); fall back to the raw data map otherwise
+               object:
+                 case activity do
+                   %ActivityPub.Object{} -> activity
+                   _ -> data
+                 end,
                local: true
              }) do
         debug(accept, "Follow was auto-accepted")
@@ -1127,7 +1134,9 @@ defmodule Bonfire.Social.Graph.Follows do
         {:ok, follow}
       else
         e ->
-          error(e, "Unable to auto-accept the follow")
+          # non-fatal: the follow is recorded regardless, and in allowlist-only/archipelago mode
+          # delivering the Accept to a non-allowlisted remote can legitimately be filtered out
+          warn(e, "Could not auto-accept the follow (the follow was still recorded)")
           {:ok, follow}
       end
     else
