@@ -51,6 +51,27 @@ defmodule Bonfire.Social.Graph.FollowRequestsTest do
       # Now the follow relationship should be established
       assert Bonfire.Social.Graph.Follows.following?(follower, followed)
       refute Bonfire.Social.Graph.Follows.requested?(follower, followed)
+
+      # the accepted follow's activity must show the FOLLOWER as the actor — not the accepter.
+      # Regression for bonfire-app#1907/#1906/#1659 (the activity was created with subject =
+      # current_user, i.e. the accepter, so notifications showed the wrong/invalid actor).
+      assert %{edges: edges} =
+               Bonfire.Social.FeedLoader.feed(:notifications,
+                 current_user: followed,
+                 preload: false
+               )
+
+      follow_verb_id = Bonfire.Boundaries.Verbs.get(:follow)[:id]
+
+      follow_activity =
+        Enum.find_value(edges, fn e ->
+          if e.activity.verb_id == follow_verb_id, do: e.activity
+        end)
+
+      assert follow_activity, "expected a :follow activity in the followed user's notifications"
+
+      assert follow_activity.subject_id == follower.id,
+             "accepted follow's subject should be the follower (#{follower.id}), got #{follow_activity.subject_id} (accepter is #{followed.id})"
     end
 
     test "can ignore a follow request", %{follower: follower, followed: followed} do

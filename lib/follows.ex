@@ -368,7 +368,10 @@ defmodule Bonfire.Social.Graph.Follows do
         opts[:to_feeds_ids],
         follow,
         object,
-        [push_to_thread: false, notify: opts[:notify_feed_ids] || true]
+        [
+          push_to_thread: false,
+          notify: opts[:notify_feed_ids] || true
+        ]
       ])
 
       {:ok, follow}
