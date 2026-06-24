@@ -77,7 +77,9 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
 
       if user do
         with {:ok, f} <- Bonfire.Social.Graph.Follows.follow(user, to_follow),
-             do: {:ok, e(f, :activity, nil)}
+             {:ok, activity} <- follow_activity(f) do
+          {:ok, activity}
+        end
       else
         {:error, "Not authenticated"}
       end
@@ -114,6 +116,16 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
              do: {:ok, true}
       else
         {:error, "Not authenticated"}
+      end
+    end
+
+    defp follow_activity(follow_or_request) do
+      follow_or_request
+      |> Bonfire.Common.Repo.maybe_preload(:activity)
+      |> e(:activity, nil)
+      |> case do
+        %{id: _} = activity -> {:ok, activity}
+        _ -> {:error, "Could not resolve follow activity"}
       end
     end
 
