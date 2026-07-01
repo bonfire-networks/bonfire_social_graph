@@ -9,7 +9,7 @@ defmodule Bonfire.Social.Graph.Integration do
 
   def mailer, do: Config.get!(:mailer_module)
 
-  declare_extension("Social graph",
+  declare_extension(l("Social graph"),
     icon: "fluent:people-community-48-filled",
     emoji: "🫂",
     description:
