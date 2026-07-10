@@ -171,7 +171,6 @@ defmodule Bonfire.Social.Graph.Aliases do
     end
 
     with {:error, :not_found} <- Bonfire.Files.Media.get_by_path(external_url),
-         # TODO: avoid storing access tokens in DB?
          {:ok, target} <-
            Bonfire.Files.Media.insert(
              user,
