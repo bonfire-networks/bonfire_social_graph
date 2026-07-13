@@ -445,9 +445,9 @@ defmodule Bonfire.Social.Graph.Aliases do
       {:ok, :moved}
 
   """
+  # NOTE: no preload here — an `%ActivityPub.Actor{}` is not an Ecto schema (a previous
+  # `maybe_preload(target, :edge)` here always raised UndefinedFunctionError when reached)
   def move(subject, %ActivityPub.Actor{} = target) do
-    target = repo().maybe_preload(target, :edge)
-
     with {:ok, actor} <-
            ActivityPub.Actor.get_cached(pointer: subject)
            |> debug("from actor") do
