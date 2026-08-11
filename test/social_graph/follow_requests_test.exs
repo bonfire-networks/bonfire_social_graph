@@ -74,6 +74,26 @@ defmodule Bonfire.Social.Graph.FollowRequestsTest do
              "accepted follow's subject should be the follower (#{follower.id}), got #{follow_activity.subject_id} (accepter is #{followed.id})"
     end
 
+    test "can accept a follow request given only its id, as the Accept button does", %{
+      follower: follower,
+      followed: followed
+    } do
+      # the LiveView Accept button only sends `phx-value-id`, so the request is looked up by id
+      # rather than handed over as a struct (which `Requests.requested/2` short-circuits) — this
+      # is the one divergence between the passing struct-based test above and the failing UI
+      # reported against an instance with federation OFF (tests default it ON, config/test.exs)
+      Process.put(:federating, false)
+
+      {:ok, request} = Bonfire.Social.Graph.Follows.follow(follower, followed)
+      assert Bonfire.Social.Graph.Follows.requested?(follower, followed)
+
+      assert {:ok, _follow} =
+               Bonfire.Social.Graph.Follows.accept(request.id, current_user: followed)
+
+      assert Bonfire.Social.Graph.Follows.following?(follower, followed)
+      refute Bonfire.Social.Graph.Follows.requested?(follower, followed)
+    end
+
     test "can ignore a follow request", %{follower: follower, followed: followed} do
       # Create a follow request
       {:ok, request} = Bonfire.Social.Graph.Follows.follow(follower, followed)
