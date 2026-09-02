@@ -802,8 +802,10 @@ defmodule Bonfire.Social.Graph.Follows do
   end
 
   defp page_of_ids(q, opts) do
-    page = opts[:page] || 1
-    page_size = opts[:page_size] || 10
+    # clamp: pages are 1-based, and `(page - 1) * page_size` must never reach SQL as a negative
+    # OFFSET (Postgres rejects it) — callers may pass user-supplied page numbers
+    page = max(opts[:page] || 1, 1)
+    page_size = max(opts[:page_size] || 10, 1)
 
     q
     |> order_by([edge: edge], desc: edge.id)
