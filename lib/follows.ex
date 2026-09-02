@@ -128,7 +128,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
       iex> Bonfire.Social.Graph.Follows.follow_status(user, user2)
       Follow
-      
+
       iex> Bonfire.Social.Graph.Follows.follow_status(user, user3)
       Request
   """
@@ -230,7 +230,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
   ## Returns
 
-  `[{"object1_id", {:ok, result}}, {"object2_id", {:error, msg}}, ...]` 
+  `[{"object1_id", {:ok, result}}, {"object2_id", {:error, msg}}, ...]`
 
   ## Examples
 
@@ -438,7 +438,7 @@ defmodule Bonfire.Social.Graph.Follows do
       Bonfire.Social.Graph.graph_add(follower, user_objects, Follow)
     end
 
-    # Handle federation 
+    # Handle federation
     if opts[:incoming] != true do
       Enum.map(follows, fn
         {object_id, {:ok, follow}} ->
@@ -750,6 +750,77 @@ defmodule Bonfire.Social.Graph.Follows do
   def all_subjects_by_object(user, opts \\ []) do
     all_by_object(user, opts)
     |> Enum.map(&(e(&1, :edge, :subject, nil) || &1))
+  end
+
+  @doc """
+  One page of follower subject ids for an object, paged and ordered in SQL (newest follow
+  first), keeping `all_subjects_by_object/2` visibility semantics.
+  Opts: `page:` (default 1), `page_size:` (default 10), plus the usual follow-query opts.
+  """
+  def page_follower_ids(object, opts \\ []) do
+    opts = to_options(opts)
+
+    followers_ids_query(object, opts)
+    |> page_of_ids(opts)
+  end
+
+  @doc "Number of followers of an object (same visibility semantics as `page_follower_ids/2`), counted in SQL."
+  def count_followers(object, opts \\ []) do
+    opts = to_options(opts)
+
+    followers_ids_query(object, opts)
+    |> count_edge_ids()
+  end
+
+  @doc "Followed-side sibling of `page_follower_ids/2`: one page of followed object ids for a subject."
+  def page_followed_ids(subject, opts \\ []) do
+    opts = to_options(opts)
+
+    followed_ids_query(subject, opts)
+    |> page_of_ids(opts)
+  end
+
+  @doc "Number of objects a subject follows — see `count_followers/2`."
+  def count_followed(subject, opts \\ []) do
+    opts = to_options(opts)
+
+    followed_ids_query(subject, opts)
+    |> count_edge_ids()
+  end
+
+  defp followers_ids_query(object, opts) do
+    opts
+    |> Keyword.put_new(:preload, :subject_id_only)
+    |> then(&query([objects: object], &1))
+    |> where([edge: edge], edge.subject_id not in ^e(opts, :exclude_ids, []))
+  end
+
+  defp followed_ids_query(subject, opts) do
+    opts
+    |> Keyword.put_new(:preload, :object_id_only)
+    |> then(&query([subjects: subject], &1))
+  end
+
+  defp page_of_ids(q, opts) do
+    page = opts[:page] || 1
+    page_size = opts[:page_size] || 10
+
+    q
+    |> order_by([edge: edge], desc: edge.id)
+    |> limit(^page_size)
+    |> offset(^((page - 1) * page_size))
+    |> repo().many()
+    |> List.flatten()
+  end
+
+  defp count_edge_ids(q) do
+    q
+    |> Ecto.Query.exclude(:select)
+    |> Ecto.Query.exclude(:order_by)
+    |> Ecto.Query.exclude(:preload)
+    |> Ecto.Query.exclude(:distinct)
+    |> select([edge: edge], count(edge.id))
+    |> repo().one() || 0
   end
 
   @doc """
