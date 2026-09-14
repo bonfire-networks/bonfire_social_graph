@@ -337,14 +337,14 @@ defmodule Bonfire.Social.Graph.Follows do
 
       # only an id: `load_pointer/2` fuses the fetch with the `:follow` check into a single query, so asking about `:request` is deferred to the path where it was refused
       id when is_binary(id) ->
-        case Bonfire.Boundaries.load_pointer(id, opts) |> info("loaded_pointer") do
+        case Bonfire.Boundaries.load_pointer(id, opts) |> debug("loaded_pointer") do
           loaded when is_struct(loaded) ->
             local_or_remote_object(loaded)
 
           _ ->
             # following was refused, so ask the same question again for `:request`. `load_pointer/2` fuses fetching with the check, so this stays one query and yields the loaded object, which the request needs anyway.
             case Bonfire.Boundaries.load_pointer(id, Keyword.put(opts, :verbs, [:request]))
-                 |> info("loaded_pointer for request") do
+                 |> debug("loaded_pointer for request") do
               loaded when is_struct(loaded) -> {:request, loaded}
               _ -> {:error, :not_permitted}
             end
@@ -1105,7 +1105,7 @@ defmodule Bonfire.Social.Graph.Follows do
   defp permitted_follow_or_request(follower, object, _skip?) do
     verbs =
       Bonfire.Boundaries.Queries.permitted_verbs_on(follower, object, [:follow, :request])
-      |> info("permitted verbs for follow")
+      |> debug("permitted verbs for follow")
 
     cond do
       :follow in verbs -> local_or_remote_object(object)
