@@ -63,6 +63,21 @@ defmodule Bonfire.Social.Graph.FollowsTest do
     assert true == Follows.following?(me, followed)
   end
 
+  # Repeating a follow is ordinary rather than exceptional: Lemmy re-sends its `Follow`
+  # periodically to keep a subscription alive, and any caller that couples following to another
+  # act (joining a group, say) issues it without knowing whether one is already there. So the
+  # second call answers with the follow that exists, and answers it the same way as the first.
+  test "following someone I already follow returns the existing follow" do
+    me = Fake.fake_user!()
+    followed = Fake.fake_user!()
+
+    assert {:ok, %{id: first_id}} = Follows.follow(me, followed)
+    assert {:ok, %{id: second_id}} = Follows.follow(me, followed)
+
+    assert second_id == first_id, "a repeat must not create a second edge"
+    assert Follows.following?(me, followed)
+  end
+
   test "can unfollow someone" do
     me = Fake.fake_user!()
     followed = Fake.fake_user!()

@@ -131,4 +131,33 @@ defmodule Bonfire.Social.Graph.FollowRequestsTest do
       assert Enum.member?(requester_ids, follower.id)
     end
   end
+
+  # Asking to follow is gated by the `:request` verb, so denying it has to actually stop the request being created. `Follows.follow/3` reaches `Requests.request/4` down its `:not_permitted` path, which is the same path an ordinary locked account takes, so the check belongs there rather than in the caller. The pair below has to be read together: "no request was created" and "the request path never ran" look identical from the outside.
+  describe "being denied the ask" do
+    test "an ordinary account can ask to follow a locked account" do
+      followed = fake_user!(%{}, %{}, request_before_follow: true)
+      asker = fake_user!()
+
+      assert {:ok, _} = Bonfire.Social.Graph.Follows.follow(asker, followed)
+
+      assert Bonfire.Social.Graph.Follows.requested?(asker, followed),
+             "the control: asking works by default, so the refusal below is about the denial rather than about locked accounts being unaskable"
+    end
+
+    test "an account denied :request cannot ask to follow" do
+      followed = fake_user!(%{}, %{}, request_before_follow: true)
+      denied = fake_user!()
+
+      Bonfire.Boundaries.Controlleds.grant_role(denied.id, followed, :cannot_request,
+        current_user: followed
+      )
+
+      Bonfire.Social.Graph.Follows.follow(denied, followed)
+
+      refute Bonfire.Social.Graph.Follows.requested?(denied, followed),
+             "`cannot_request` is the only way to say \"do not ask me\", so a request row here means the denial has no effect"
+
+      refute Bonfire.Social.Graph.Follows.following?(denied, followed)
+    end
+  end
 end

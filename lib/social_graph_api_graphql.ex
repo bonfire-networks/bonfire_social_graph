@@ -76,10 +76,8 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
       user = GraphQL.current_user(info)
 
       if user do
-        result = if Bonfire.Social.Graph.Follows.following?(user, to_follow),
-          do: Bonfire.Social.Graph.Follows.get(user, to_follow, current_user: user),
-          else: Bonfire.Social.Graph.Follows.follow(user, to_follow)
-        with {:ok, f} <- result,
+        # a client pressing Follow means "be following this", so a repeat answers with the follow that exists rather than erroring
+        with {:ok, f} <- Bonfire.Social.Graph.Follows.maybe_follow(user, to_follow),
              {:ok, activity} <- follow_activity(f) do
           {:ok, activity}
         end

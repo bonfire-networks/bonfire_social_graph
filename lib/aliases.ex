@@ -539,7 +539,8 @@ defmodule Bonfire.Social.Graph.Aliases do
     # |> repo().maybe_preload(character: :peered)
     # |> Enum.filter(&Social.is_local?/1)
     |> Enum.map(fn third_party_subject ->
-      with {:ok, _} <- Follows.follow(third_party_subject, target),
+      # someone who already follows the target is the commonest case here, not an error: people often follow both accounts around a move. A strict follow would fail for them, and the `with` would then skip the unfollow below, leaving them attached to the account that moved away
+      with {:ok, _} <- Follows.maybe_follow(third_party_subject, target),
            {:ok, _} <- Follows.unfollow(third_party_subject, origin) do
         :ok
       else

@@ -179,6 +179,25 @@ defmodule Bonfire.Social.Graph.Follows do
   """
   def follow(follower, object, opts \\ [])
 
+  @doc """
+  Makes sure a follow exists, returning the existing one if it does, and following otherwise.
+
+  For callers that mean "be following this" rather than "record a new follow", where a repeat is ordinary rather than exceptional: Lemmy re-sends its `Follow` periodically to keep a subscription alive, and anything that couples following to another act (joining a group, say) issues it without knowing whether one is already there.
+
+  Answering from the existing row costs one indexed lookup and skips the boundary check, the transaction and the side effects, none of which have anything to decide about an act that already happened. Going through `follow/3` instead costs four round trips, an `Ecto.ConstraintError` with its stacktrace and an error log line, all for a normal occurrence.
+
+  ## Examples
+
+      iex> Bonfire.Social.Graph.Follows.maybe_follow(me, already_followed)
+      {:ok, %Follow{}}
+  """
+  def maybe_follow(follower, object, opts \\ []) do
+    case get(follower, object, skip_boundary_check: true) do
+      {:ok, existing} -> {:ok, existing}
+      _ -> follow(follower, object, opts)
+    end
+  end
+
   def follow(%{} = follower, object, opts) do
     follower = repo().preload(follower, [:character, :peered])
     opts = Keyword.put_new(to_options(opts), :current_user, follower)
@@ -213,9 +232,13 @@ defmodule Bonfire.Social.Graph.Follows do
         error("cannot follow yourself, not creating a request")
         {:error, :self_follow}
 
+      {:request, loaded_object} ->
+        info("not permitted to follow, but permitted to ask, so requesting")
+        Requests.request(follower, Follow, loaded_object, opts)
+
       {:error, :not_permitted} ->
-        info("not permitted to follow, attempting a request instead")
-        Requests.request(follower, Follow, object, opts)
+        info("not permitted to follow, and not permitted to ask either")
+        {:error, :not_permitted}
     end
   end
 
@@ -258,9 +281,9 @@ defmodule Bonfire.Social.Graph.Follows do
       end)
       |> do_side_effects(follower, objects, opts)
 
-    # Handle remote follows as requests
+    # Remote objects become requests because the far side decides; `:request` ones because following was refused but asking is permitted. Objects that permit neither are absent from both groups and so are simply not acted on.
     requests =
-      (objects_to_action[:remote] || [])
+      ((objects_to_action[:remote] || []) ++ (objects_to_action[:request] || []))
       |> Enum.map(fn object ->
         {id(object), Requests.request(follower, Follow, object, opts)}
       end)
@@ -308,13 +331,23 @@ defmodule Bonfire.Social.Graph.Follows do
         error(follower_id, "cannot follow yourself")
         {:error, :self_follow}
 
+      # already loaded, so nothing to fetch: one query answers `:follow` and `:request` together
+      id when is_binary(id) and is_struct(object) ->
+        permitted_follow_or_request(follower, object, skip?)
+
+      # only an id: `load_pointer/2` fuses the fetch with the `:follow` check into a single query, so asking about `:request` is deferred to the path where it was refused
       id when is_binary(id) ->
         case Bonfire.Boundaries.load_pointer(id, opts) |> info("loaded_pointer") do
-          object when is_struct(object) ->
-            local_or_remote_object(object)
+          loaded when is_struct(loaded) ->
+            local_or_remote_object(loaded)
 
           _ ->
-            {:error, :not_permitted}
+            # following was refused, so ask the same question again for `:request`. `load_pointer/2` fuses fetching with the check, so this stays one query and yields the loaded object, which the request needs anyway.
+            case Bonfire.Boundaries.load_pointer(id, Keyword.put(opts, :verbs, [:request]))
+                 |> info("loaded_pointer for request") do
+              loaded when is_struct(loaded) -> {:request, loaded}
+              _ -> {:error, :not_permitted}
+            end
         end
 
       _ ->
@@ -361,20 +394,30 @@ defmodule Bonfire.Social.Graph.Follows do
   end
 
   defp follow_with_side_effects(%{} = follower, %{} = object, opts) do
-    with opts <- opts_for_follow(follower, object, opts),
-         {:ok, follow} <- do_follow(follower, object, opts),
-         [ok: follow] <- do_side_effects([follow], follower, [object], opts) do
-      maybe_apply(Bonfire.Social.LivePush, :push_activity_object, [
-        opts[:to_feeds_ids],
-        follow,
-        object,
-        [
-          push_to_thread: false,
-          notify: opts[:notify_feed_ids] || true
-        ]
-      ])
+    opts = opts_for_follow(follower, object, opts)
 
-      {:ok, follow}
+    case do_follow(follower, object, opts) do
+      # nothing happened, so nothing is pushed or federated: the feed entry is already there and re-federating would try to insert an AP object that exists
+      {:already, follow} ->
+        {:ok, follow}
+
+      {:ok, follow} ->
+        with [ok: follow] <- do_side_effects([follow], follower, [object], opts) do
+          maybe_apply(Bonfire.Social.LivePush, :push_activity_object, [
+            opts[:to_feeds_ids],
+            follow,
+            object,
+            [
+              push_to_thread: false,
+              notify: opts[:notify_feed_ids] || true
+            ]
+          ])
+
+          {:ok, follow}
+        end
+
+      other ->
+        other
     end
   end
 
@@ -383,16 +426,20 @@ defmodule Bonfire.Social.Graph.Follows do
   # * When we start allowing to follow things that aren't users, we might need to adjust the circles.
   # * Figure out how to avoid the advance lookup and ensuing race condition.
   defp do_follow(%{} = follower, %{} = object, opts) do
-    repo().transact_with(fn ->
-      case create(follower, object, opts) do
-        {:ok, follow} ->
-          {:ok, follow}
+    # the "did they already follow?" recovery has to happen AFTER the transaction, not inside it: a duplicate follow trips the unique index, which aborts the transaction, and Postgres then refuses every further command in it (`25P02`), so a lookup attempted in there cannot see the follow that is sitting right in the table. Recovering outside is what makes a repeat follow idempotent rather than an `{:error, :not_found}` that no caller can act on.
+    case repo().transact_with(fn -> create(follower, object, opts) end) do
+      {:ok, follow} ->
+        {:ok, follow}
 
-        e ->
-          error(e)
-          maybe_already_followed(follower, object)
-      end
-    end)
+      e ->
+        error(e)
+
+        case maybe_already_followed(follower, object) do
+          # distinguished from a fresh follow so the caller can skip the side effects of an act that did not happen
+          {:ok, existing} -> {:already, existing}
+          other -> other
+        end
+    end
   end
 
   def do_side_effects(follows, follower, objects, opts) do
@@ -553,12 +600,12 @@ defmodule Bonfire.Social.Graph.Follows do
 
   ## Returns
 
-  Result of the unfollow operation.
+  `{:ok, _}` from each of its three success paths, or `{:error, _}` when there was neither a follow nor a pending request to undo.
 
   ## Examples
 
       iex> Bonfire.Social.Graph.Follows.unfollow(me, user2)
-      {:ok, deleted_follow}
+      {:ok, 1}
   """
   def unfollow(user, object, opts \\ [])
 
@@ -568,9 +615,7 @@ defmodule Bonfire.Social.Graph.Follows do
         Edges.delete_by_both(user, Follow, object)
         |> debug("deleted")
 
-      # with [_id] <- Edges.delete_by_both(user, Follow, object) do
-
-      # delete the like activity & feed entries
+      # delete the follow activity & feed entries
       deleted_activities = Activities.delete_by_subject_verb_object(user, :follow, object)
 
       invalidate_followed_outboxes_cache(id(user))
@@ -585,7 +630,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
       if opts[:incoming] != true,
         do: ap_publish_activity(user, :delete, object),
-        else: ok(deleted_edges || deleted_activities)
+        else: Enums.first_ok_or_error([deleted_edges, deleted_activities])
     else
       if requested?(user, object) do
         Requests.unrequest(user, Follow, object)
@@ -1052,9 +1097,29 @@ defmodule Bonfire.Social.Graph.Follows do
   #   Bonfire.Common.Needles.get(id, skip_boundary_check: true)
   #   ~> local_or_remote_object()
   # end
+  # Used when the object is ALREADY loaded, so no fetch is needed and one query can answer both verbs at once.
+  # Whether asking is allowed is a real question, not a fallback: `cannot_request`, `cannot_participate_or_request` and an `invite_only` group granting no `:request` all mean "you may not even ask". `permitted_verbs_on/3` keeps negative precedence and circle expansion in SQL, which is where deciding this from grouped grant rows in Elixir would drop a denial.
+  defp permitted_follow_or_request(_follower, object, true = _skip?),
+    do: local_or_remote_object(object)
+
+  defp permitted_follow_or_request(follower, object, _skip?) do
+    verbs =
+      Bonfire.Boundaries.Queries.permitted_verbs_on(follower, object, [:follow, :request])
+      |> info("permitted verbs for follow")
+
+    cond do
+      :follow in verbs -> local_or_remote_object(object)
+      :request in verbs -> {:request, object}
+      true -> {:error, :not_permitted}
+    end
+  end
+
   defp local_or_remote_object(object) do
+    # `prune: true` because this list is a superset across everything that can be followed, and not all of it is actor-shaped: a Hashtag has no `character`, no `peered` and no `created`, so asking for them unpruned raises rather than answering the locality question these preloads are here for
     object =
-      repo().maybe_preload(object, [:character, :peered, created: [creator: :peered]])
+      repo().maybe_preload(object, [:character, :peered, created: [creator: :peered]],
+        prune: true
+      )
       |> info("preloaded object for follow")
 
     if Social.is_local?(object) |> info("local_or_remote_object is local?") do
@@ -1080,8 +1145,8 @@ defmodule Bonfire.Social.Graph.Follows do
     Edges.insert(Follow, follower, :follow, object, opts)
   rescue
     e in Ecto.ConstraintError ->
+      # only report it: the transaction is aborted by this point, so looking the existing follow up has to wait until `do_follow/3` is outside it
       error(e)
-      maybe_already_followed(follower, object)
   end
 
   ### ActivityPub integration
@@ -1191,41 +1256,15 @@ defmodule Bonfire.Social.Graph.Follows do
          false <- following?(follower, followed),
          {:ok, %Follow{} = follow} <-
            follow(follower, followed, current_user: follower, incoming: true) do
-      with {:ok, _} = accept <-
-             ActivityPub.accept(%{
-               actor: object,
-               to: [data["actor"]],
-               # pass the already-resolved Follow activity object directly so `accept` doesn't
-               # have to look it up by ap_id (which can miss, e.g. in allowlist-only/archipelago
-               # mode, returning `nil`); fall back to the raw data map otherwise
-               object:
-                 case activity do
-                   %ActivityPub.Object{} -> activity
-                   _ -> data
-                 end,
-               local: true
-             }) do
-        debug(accept, "Follow was auto-accepted")
+      Bonfire.Federate.ActivityPub.Outgoing.send_accept(object, activity)
+      |> debug("Follow was auto-accepted")
 
-        {:ok, follow}
-      else
-        e ->
-          # non-fatal: the follow is recorded regardless, and in allowlist-only/archipelago mode
-          # delivering the Accept to a non-allowlisted remote can legitimately be filtered out
-          warn(e, "Could not auto-accept the follow (the follow was still recorded)")
-          {:ok, follow}
-      end
+      {:ok, follow}
     else
       true ->
         warn("Federated follow already exists")
         # reaffirm that the follow has gone through when following? was already == true
-
-        ActivityPub.accept(%{
-          actor: object,
-          to: [data["actor"]],
-          object: data,
-          local: true
-        })
+        Bonfire.Federate.ActivityPub.Outgoing.send_accept(object, activity)
 
       {:ok, %Request{} = request} ->
         info("Follow was requested and remains pending")
@@ -1303,14 +1342,42 @@ defmodule Bonfire.Social.Graph.Follows do
   def ap_receive_activity(
         follower,
         %{data: %{"type" => "Undo"} = _data} = _activity,
-        %{data: %{"object" => followed_ap_id}} = _object
+        %{data: %{"object" => followed_ap_id}} = undone
       ) do
     with {:ok, object} <-
            Bonfire.Federate.ActivityPub.AdapterUtils.get_or_fetch_character_by_ap_id(
              followed_ap_id
            ),
-         [id] <- unfollow(follower, object, incoming: true) do
-      {:ok, id}
+         {:ok, _} = unfollowed <- unfollow(follower, object, incoming: true) do
+      undo_what_it_created(undone)
+      unfollowed
     end
+  end
+
+  # `Undo` means undo what the activity did, which for some peers can be more than the follow itself: eg. where following IS joining (Lemmy sends no `Leave` at all), the `Follow` conferred a membership, and leaving that behind stands someone in a group they have left with no way out.
+  #
+  # Nothing here knows about groups. It asks only what this activity created, which is recorded by whoever created it linking the record to the activity, the same `Peered` link ingest already makes for objects. A peer that distinguishes (Mobilizon) links its membership to the `Join` instead, so undoing a `Follow` finds nothing and the follow alone goes, which is right for them.
+  #
+  # Absence is the ordinary case, not an error: every follow made before this link existed has none, and those degrade to unfollow-only, exactly as before.
+  defp undo_what_it_created(undone) do
+    case e(undone, :data, "id", nil) || e(undone, :ap_id, nil) do
+      ap_id when is_binary(ap_id) ->
+        Bonfire.Federate.ActivityPub.Peered.list_by_canonical_uris([ap_id])
+        |> Enum.map(&id/1)
+        |> Enum.reject(&is_nil/1)
+        |> delete_memberships()
+
+      _ ->
+        :ok
+    end
+  end
+
+  # deliberately narrow: `link_ap_object/3` writes a `Peered` for every object ingest creates, so deleting everything that's linked would remove posts on an `Undo{Create}`. Only memberships are undone here
+  defp delete_memberships([]), do: :ok
+
+  defp delete_memberships(ids) do
+    repo().delete_many(from(e in Bonfire.Data.AccessControl.Encircle, where: e.id in ^ids))
+
+    :ok
   end
 end
