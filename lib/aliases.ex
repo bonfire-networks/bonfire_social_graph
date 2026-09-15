@@ -518,8 +518,11 @@ defmodule Bonfire.Social.Graph.Aliases do
            Bonfire.Federate.ActivityPub.AdapterUtils.get_or_fetch_character_by_ap_id(
              origin_object
            ),
+         # the TARGET needs resolving just as the origin does: it arrives as an ap id in the activity's JSON, and following an `%ActivityPub.Actor{}` rather than its local mirror writes that actor's UUID into `Grant.subject_id`, which is a ULID column
+         {:ok, target_character} <-
+           Bonfire.Federate.ActivityPub.AdapterUtils.get_or_fetch_character_by_ap_id(target),
          true <- id(origin_character) == id(subject),
-         [:ok] <- move_following(origin_character, target) |> Enum.uniq() do
+         [:ok] <- move_following(origin_character, target_character) |> Enum.uniq() do
       {:ok, :moved}
     else
       result when is_list(result) ->
