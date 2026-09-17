@@ -1185,9 +1185,9 @@ defmodule Bonfire.Social.Graph.Follows do
       # Only the FOLLOWER's own instance can undo their follow over the wire. The `local: true` below describes the activity we are building, and `ActivityPub.maybe_federate/3` gates on that flag rather than on the actor, so without this the queue would try to deliver a remote subject's `Undo{Follow}` as them.
       # Reached whenever we drop a follow that is not ours to drop, e.g. ghosting severs THEIR follow of ME. The local record still goes, we just have nothing to send about it.
       # Tested for `== false` rather than truthiness because `local` is nil on a tombstoned actor (`ActivityPub.Actor:516`), and reading that as remote would silently stop federating unfollows that work today.
+      # `{:ignore, reason}` is the shape the federation paths already use for a deliberate non-send (`Outgoing.ap_publish/4`, `ActivityPub.Federator.Workers.Worker`, and `maybe_follow/3` below), and it is neither of the two wrong answers here: `{:ok, _}` would claim an activity that does not exist, and `{:error, _}` would report a fault when nothing went wrong. It also lets `Aliases.move_following/2` count this follower as unmoved on purpose rather than by failing to match a tuple.
       if follower.local == false do
-        debug(follower, "not our follow to undo, so nothing is federated")
-        {:ok, :skipped_remote_follower}
+        {:ignore, "Not our follow to undo, so nothing to federate"}
       else
         ActivityPub.unfollow(%{actor: follower, object: ap_object, local: true})
       end

@@ -547,6 +547,11 @@ defmodule Bonfire.Social.Graph.Aliases do
            {:ok, _} <- Follows.unfollow(third_party_subject, origin) do
         :ok
       else
+        # A follower on another server: their follow is theirs to move, and the `Undo{Follow}` would have to be signed with their key. So this one did not move, which is what the caller counts, but it is the expected answer rather than a fault and does not deserve an error log.
+        {:ignore, reason} ->
+          debug(reason, "leaving this follower where they are")
+          :error
+
         e ->
           error(e)
           :error
