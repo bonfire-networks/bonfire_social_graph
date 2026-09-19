@@ -403,11 +403,12 @@ defmodule Bonfire.Social.Graph.Follows do
 
       {:ok, follow} ->
         with [ok: follow] <- do_side_effects([follow], follower, [object], opts) do
-          maybe_apply(Bonfire.Social.LivePush, :push_activity_object, [
-            opts[:to_feeds_ids],
+          maybe_apply(Bonfire.Social.LivePush, :emit_live, [
             follow,
-            object,
+            opts[:to_feeds_ids],
             [
+              # shown as being about who was followed, rather than about the follow
+              object: object,
               push_to_thread: false,
               notify: opts[:notify_feed_ids] || true
             ]
