@@ -728,6 +728,19 @@ defmodule Bonfire.Social.Graph.Follows do
   end
 
   @doc """
+  Whether this user follows anybody at all.
+
+  For callers that only want the yes or no, such as offering somebody a nudge to follow their first person: Postgres stops at the first row, and nothing is loaded or preloaded to be thrown away.
+
+      iex> Bonfire.Social.Graph.Follows.any_by_subject?(user)
+      true
+  """
+  def any_by_subject?(user) do
+    query([subjects: user], skip_boundary_check: true)
+    |> repo().exists?()
+  end
+
+  @doc """
   Lists all objects followed by a subject.
 
   ## Parameters

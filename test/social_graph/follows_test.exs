@@ -185,4 +185,25 @@ defmodule Bonfire.Social.Graph.FollowsTest do
         :ok
     end
   end
+
+  describe "any_by_subject?/1" do
+    test "flips to true once the user follows somebody" do
+      me = Fake.fake_user!()
+      other = Fake.fake_user!()
+      refute Follows.any_by_subject?(me)
+
+      assert {:ok, _follow} = Follows.follow(me, other)
+
+      assert Follows.any_by_subject?(me)
+    end
+
+    test "stays false for the person being followed" do
+      me = Fake.fake_user!()
+      other = Fake.fake_user!()
+
+      assert {:ok, _follow} = Follows.follow(me, other)
+
+      refute Follows.any_by_subject?(other)
+    end
+  end
 end
