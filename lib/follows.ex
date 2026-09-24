@@ -575,16 +575,19 @@ defmodule Bonfire.Social.Graph.Follows do
           :accept_join_request,
           [current_user_required!(opts), request, opts],
           fallback_return: nil
-        ) || error(request, l "Groups are not enabled, so a join request cannot be accepted")
+        ) || error(request, l("Groups are not enabled, so a join request cannot be accepted"))
 
       %{table_id: ^quote_verb} ->
         Bonfire.Social.Quotes.accept(request, opts)
 
       nil ->
-        error(request, l "Could not find the request to accept")
+        error(request, l("Could not find the request to accept"))
 
       edge ->
-        error(edge, l "Sorru, this is not a kind of request that enabled extensions know how to accept")
+        error(
+          edge,
+          l("Sorru, this is not a kind of request that enabled extensions know how to accept")
+        )
     end
   end
 
