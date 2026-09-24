@@ -662,6 +662,11 @@ defmodule Bonfire.Social.Graph.Follows do
 
       Bonfire.Social.Graph.graph_remove(user, object, Follow)
 
+      # a bell on someone is only offered while following them, so it goes with the follow
+      Bonfire.Common.Utils.maybe_apply(Bonfire.Notify.Bells, :disable, [user, object],
+        fallback_return: nil
+      )
+
       if opts[:incoming] != true,
         do: ap_publish_activity(user, :delete, object),
         else: Enums.first_ok_or_error([deleted_edges, deleted_activities])
