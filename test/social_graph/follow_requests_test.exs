@@ -132,6 +132,59 @@ defmodule Bonfire.Social.Graph.FollowRequestsTest do
     end
   end
 
+  # A notification's Accept button sends every kind of ask to `Follows.accept/2` by id. A kind it knows is handed on to what accepts it (the join case is in `bonfire_classify`'s groups tests), and anything else is refused while still pending, rather than being turned into a follow
+  describe "accepting a request that is not a follow request" do
+    test "a quote request is handed on and the quote accepted" do
+      alice = fake_user!()
+      bob = fake_user!()
+
+      {:ok, quoted} =
+        Bonfire.Posts.publish(
+          current_user: alice,
+          boundary: "public",
+          post_attrs: %{post_content: %{html_body: "to be quoted"}}
+        )
+
+      {:ok, post} =
+        Bonfire.Posts.publish(
+          current_user: bob,
+          boundary: "public",
+          quotes: [quoted],
+          post_attrs: %{post_content: %{html_body: "quoting"}}
+        )
+
+      assert {:ok, request} = Bonfire.Social.Quotes.requested(post, quoted)
+      opts = [current_user: alice]
+      assert Bonfire.Social.Quotes.count([in_thread: quoted.id], opts) == 0, "control: pending"
+
+      assert {:ok, _} = Bonfire.Social.Graph.Follows.accept(request.id, opts)
+
+      assert Bonfire.Social.Quotes.count([in_thread: quoted.id], opts) == 1
+    end
+
+    test "a kind it does not know is refused and stays pending" do
+      asker = fake_user!()
+      followed = fake_user!(%{}, %{}, request_before_follow: true)
+      like_verb = Bonfire.Boundaries.Verbs.get_id!(:like)
+
+      assert {:ok, request} = Bonfire.Social.Requests.request(asker, like_verb, followed)
+
+      assert {:error, _} =
+               Bonfire.Social.Graph.Follows.accept(request.id, current_user: followed)
+
+      assert Bonfire.Social.Requests.requested?(asker, like_verb, followed),
+             "a refusal must leave the ask pending, since the caller is told it failed"
+
+      refute Bonfire.Social.Graph.Follows.following?(asker, followed)
+
+      {:ok, follow_request} = Bonfire.Social.Graph.Follows.follow(asker, followed)
+
+      assert {:ok, _} =
+               Bonfire.Social.Graph.Follows.accept(follow_request.id, current_user: followed),
+             "control: the same call accepts a follow request, so the refusal above is about the kind"
+    end
+  end
+
   # Asking to follow is gated by the `:request` verb, so denying it has to actually stop the request being created. `Follows.follow/3` reaches `Requests.request/4` down its `:not_permitted` path, which is the same path an ordinary locked account takes, so the check belongs there rather than in the caller. The pair below has to be read together: "no request was created" and "the request path never ran" look identical from the outside.
   describe "being denied the ask" do
     test "an ordinary account can ask to follow a locked account" do

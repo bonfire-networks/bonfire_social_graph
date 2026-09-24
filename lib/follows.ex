@@ -544,6 +544,8 @@ defmodule Bonfire.Social.Graph.Follows do
   @doc """
   Accepts a follow request, publishes to feeds and federates.
 
+  Callers that list asks without telling them apart (a notification's Accept button) send every kind here, so a join or quote request is handed on to what accepts it, and any other kind is refused while still pending. Accepted as a follow, a join request would make a follower and no member.
+
   ## Parameters
 
   - `request`: A `Request` struct or its ID
@@ -551,7 +553,7 @@ defmodule Bonfire.Social.Graph.Follows do
 
   ## Returns
 
-  `{:ok, follow}` on success, `{:error, reason}` on failure.
+  `{:ok, follow}` on success (or whatever the handed-on accept answers), `{:error, reason}` on failure.
 
   ## Examples
 
@@ -559,6 +561,34 @@ defmodule Bonfire.Social.Graph.Follows do
       {:ok, %Follow{}}
   """
   def accept(request, opts) do
+    follow_table = Bonfire.Common.Types.table_id(Follow)
+    join_verb = Bonfire.Boundaries.Verbs.get_id!(:join)
+    quote_verb = Bonfire.Social.Quotes.quote_verb_id()
+
+    case Requests.edge(request) do
+      %{table_id: ^follow_table} ->
+        accept_follow(request, opts)
+
+      %{table_id: ^join_verb} ->
+        maybe_apply(
+          Bonfire.Classify.Categories,
+          :accept_join_request,
+          [current_user_required!(opts), request, opts],
+          fallback_return: nil
+        ) || error(request, l "Groups are not enabled, so a join request cannot be accepted")
+
+      %{table_id: ^quote_verb} ->
+        Bonfire.Social.Quotes.accept(request, opts)
+
+      nil ->
+        error(request, l "Could not find the request to accept")
+
+      edge ->
+        error(edge, l "Sorru, this is not a kind of request that enabled extensions know how to accept")
+    end
+  end
+
+  defp accept_follow(request, opts) do
     debug(opts, "opts")
 
     with {:ok, %{edge: %{object: object, subject: follower}} = request} <-
