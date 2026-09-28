@@ -565,29 +565,32 @@ defmodule Bonfire.Social.Graph.Follows do
     join_verb = Bonfire.Boundaries.Verbs.get_id!(:join)
     quote_verb = Bonfire.Social.Quotes.quote_verb_id()
 
-    case Requests.edge(request) do
-      %{table_id: ^follow_table} ->
-        accept_follow(request, opts)
+    # loaded once, through the permission-checked fetch, then passed on as a struct so nothing downstream loads it again
+    with {:ok, request} <- Requests.requested(request, opts) do
+      case Requests.edge(request) do
+        %{table_id: ^follow_table} ->
+          accept_follow(request, opts)
 
-      %{table_id: ^join_verb} ->
-        maybe_apply(
-          Bonfire.Classify.Categories,
-          :accept_join_request,
-          [current_user_required!(opts), request, opts],
-          fallback_return: nil
-        ) || error(request, l("Groups are not enabled, so a join request cannot be accepted"))
+        %{table_id: ^join_verb} ->
+          maybe_apply(
+            Bonfire.Classify.Categories,
+            :accept_join_request,
+            [current_user_required!(opts), request, opts],
+            fallback_return: nil
+          ) || error(request, l("Groups are not enabled, so a join request cannot be accepted"))
 
-      %{table_id: ^quote_verb} ->
-        Bonfire.Social.Quotes.accept(request, opts)
+        %{table_id: ^quote_verb} ->
+          Bonfire.Social.Quotes.accept(request, opts)
 
-      nil ->
-        error(request, l("Could not find the request to accept"))
+        nil ->
+          error(request, l("Could not find the request to accept"))
 
-      edge ->
-        error(
-          edge,
-          l("Sorru, this is not a kind of request that enabled extensions know how to accept")
-        )
+        edge ->
+          error(
+            edge,
+            l("Sorru, this is not a kind of request that enabled extensions know how to accept")
+          )
+      end
     end
   end
 
@@ -711,17 +714,20 @@ defmodule Bonfire.Social.Graph.Follows do
   def ignore(request, opts) do
     join_verb = Bonfire.Boundaries.Verbs.get_id!(:join)
 
-    case Requests.edge(request) do
-      %{table_id: ^join_verb} ->
-        maybe_apply(
-          Bonfire.Classify.Categories,
-          :ignore_join_request,
-          [current_user_required!(opts), request, opts],
-          fallback_return: nil
-        ) || error(request, l("Groups are not enabled, so a join request cannot be declined"))
+    # loaded once, as in `accept/2`
+    with {:ok, request} <- Requests.requested(request, opts) do
+      case Requests.edge(request) do
+        %{table_id: ^join_verb} ->
+          maybe_apply(
+            Bonfire.Classify.Categories,
+            :ignore_join_request,
+            [current_user_required!(opts), request, opts],
+            fallback_return: nil
+          ) || error(request, l("Groups are not enabled, so a join request cannot be declined"))
 
-      _ ->
-        Requests.ignore(request, opts)
+        _ ->
+          Requests.ignore(request, opts)
+      end
     end
   end
 
