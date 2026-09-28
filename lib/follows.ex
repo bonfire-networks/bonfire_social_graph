@@ -692,6 +692,8 @@ defmodule Bonfire.Social.Graph.Follows do
   @doc """
   Ignores a follow request.
 
+  As with `accept/2`, a join request is handed on to the group, which checks the decider may mediate it.
+
   ## Parameters
 
   - `request`: The request to ignore
@@ -707,7 +709,20 @@ defmodule Bonfire.Social.Graph.Follows do
       {:ok, ignored_request}
   """
   def ignore(request, opts) do
-    Requests.ignore(request, opts)
+    join_verb = Bonfire.Boundaries.Verbs.get_id!(:join)
+
+    case Requests.edge(request) do
+      %{table_id: ^join_verb} ->
+        maybe_apply(
+          Bonfire.Classify.Categories,
+          :ignore_join_request,
+          [current_user_required!(opts), request, opts],
+          fallback_return: nil
+        ) || error(request, l("Groups are not enabled, so a join request cannot be declined"))
+
+      _ ->
+        Requests.ignore(request, opts)
+    end
   end
 
   @doc """
