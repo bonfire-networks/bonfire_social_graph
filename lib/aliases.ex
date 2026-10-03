@@ -206,6 +206,17 @@ defmodule Bonfire.Social.Graph.Aliases do
           error(e)
       end
     end)
+    |> case do
+      # eg. already aliased: look it up now that the aborted transaction is over
+      {:error, _} = e ->
+        case get(user, target, skip_boundary_check: true) do
+          {:ok, _} = existing -> existing
+          _ -> e
+        end
+
+      other ->
+        other
+    end
   rescue
     e in Ecto.ConstraintError ->
       error(e)
