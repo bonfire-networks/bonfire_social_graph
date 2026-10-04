@@ -1370,6 +1370,12 @@ defmodule Bonfire.Social.Graph.Follows do
              Requests.get(follower, Follow, followed, skip_boundary_check: true),
            {:ok, accepted} <- accept(request, current_user: followed, incoming: true) do
         debug(accepted, "acccccepted")
+
+        # where following IS joining, a remote group never answers the `Join` sent alongside, so this answer settles it too
+        maybe_apply(Bonfire.Classify.Categories, :follow_answered, [follower, followed, true],
+          fallback_return: nil
+        )
+
         {:ok, accepted}
       else
         {:error, :not_found} ->
@@ -1401,6 +1407,11 @@ defmodule Bonfire.Social.Graph.Follows do
       ) do
     with {:ok, follower} <-
            Bonfire.Federate.ActivityPub.AdapterUtils.get_or_fetch_character_by_ap_id(follower) do
+      # see the `Accept` clause above
+      maybe_apply(Bonfire.Classify.Categories, :follow_answered, [follower, followed, false],
+        fallback_return: nil
+      )
+
       case following?(follower, followed) do
         false ->
           reject(follower, followed, incoming: true)
