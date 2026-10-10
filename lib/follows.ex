@@ -675,7 +675,12 @@ defmodule Bonfire.Social.Graph.Follows do
         else: Enums.first_ok_or_error([deleted_edges, deleted_activities])
     else
       if requested?(user, object) do
-        Requests.unrequest(user, Follow, object)
+        with {:ok, _} = unrequested <- Requests.unrequest(user, Follow, object) do
+          # the remote is still holding the Follow we sent, and only an Undo of it withdraws the request there: otherwise accepting it later makes us follow someone we chose not to
+          if opts[:incoming] != true, do: ap_publish_activity(user, :delete, object)
+
+          unrequested
+        end
       else
         error("Cannot unfollow because not following")
       end
