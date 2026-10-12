@@ -313,7 +313,8 @@ defmodule Bonfire.Social.Graph.Follows do
 
     opts =
       opts
-      |> Keyword.put_new(:verbs, [:follow])
+      # always `:follow`, as the struct path's `permitted_follow_or_request/3` asks: a caller-supplied `:verbs` was honoured here only, so the two paths could answer differently, and no caller passes one
+      |> Keyword.put(:verbs, [:follow])
       |> Keyword.put_new(:current_user, follower)
       |> Keyword.put_new(:skip_boundary_check, skip?)
       |> info("check_follow opts")
