@@ -97,6 +97,18 @@ defmodule Bonfire.Social.Graph.FollowsTest do
     assert fetched_follow.id == follow.id
   end
 
+  # The user picker (`UserSelectorLive.load_followed/2`) lists everyone I follow, unpaginated and filtered by type.
+  test "can list my followed of a type, unpaginated" do
+    me = Fake.fake_user!()
+    followed = Fake.fake_user!()
+    assert {:ok, _follow} = Follows.follow(me, followed)
+
+    assert [fetched_follow] =
+             Follows.list_my_followed(me, paginate: false, type: Bonfire.Data.Identity.User)
+
+    assert fetched_follow.edge.object.id == followed.id
+  end
+
   test "can list my followers, ignoring boundaries" do
     me = Fake.fake_user!()
     follower = Fake.fake_user!()
