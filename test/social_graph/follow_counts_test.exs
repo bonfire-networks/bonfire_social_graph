@@ -36,8 +36,12 @@ defmodule Bonfire.Social.Graph.FollowCountsTest do
     {:ok, _} = Follows.follow(me, Fake.fake_user!())
 
     live =
-      {Bonfire.Social.Edges.count(Bonfire.Data.Social.Follow, [objects: me], skip_boundary_check: true),
-       Bonfire.Social.Edges.count(Bonfire.Data.Social.Follow, [subjects: me], skip_boundary_check: true)}
+      {Bonfire.Social.Edges.count(Bonfire.Data.Social.Follow, [objects: me],
+         skip_boundary_check: true
+       ),
+       Bonfire.Social.Edges.count(Bonfire.Data.Social.Follow, [subjects: me],
+         skip_boundary_check: true
+       )}
 
     assert Follows.follow_counts(me) == live
   end

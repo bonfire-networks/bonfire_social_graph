@@ -162,9 +162,11 @@ defmodule Bonfire.Social.Graph.Follows do
       # a pending request is an edge with Follow's table_id but no Follow row
       join: f in Follow,
       on: f.id == e.id,
-      where: e.table_id == ^follow_table_id and (e.object_id == ^user_id or e.subject_id == ^user_id),
+      where:
+        e.table_id == ^follow_table_id and (e.object_id == ^user_id or e.subject_id == ^user_id),
       select:
-        {filter(count(e.id), e.object_id == ^user_id), filter(count(e.id), e.subject_id == ^user_id)}
+        {filter(count(e.id), e.object_id == ^user_id),
+         filter(count(e.id), e.subject_id == ^user_id)}
     )
     |> repo().one()
   end
