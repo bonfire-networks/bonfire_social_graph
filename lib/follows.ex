@@ -153,6 +153,59 @@ defmodule Bonfire.Social.Graph.Follows do
     end
   end
 
+  @doc "`{followers, following}` for `user`, accepted follows only, in one query. Not read from `Bonfire.Data.Social.FollowCount`, which counts pending requests too."
+  def follow_counts(user) do
+    user_id = uid(user)
+    follow_table_id = Types.table_id(Follow)
+
+    from(e in Edge,
+      # a pending request is an edge with Follow's table_id but no Follow row
+      join: f in Follow,
+      on: f.id == e.id,
+      where: e.table_id == ^follow_table_id and (e.object_id == ^user_id or e.subject_id == ^user_id),
+      select:
+        {filter(count(e.id), e.object_id == ^user_id), filter(count(e.id), e.subject_id == ^user_id)}
+    )
+    |> repo().one()
+  end
+
+  @doc "`{users, total}`: up to `limit` people `viewer` follows who follow `target`, for \"Followed by\". Not boundary-checked, like the followers pages; if follows become hideable, this must respect it."
+  def familiar_followers(viewer, target, limit \\ 3) do
+    viewer_id = uid(viewer)
+    target_id = uid(target)
+    follow_table_id = Types.table_id(Follow)
+
+    # rooted at User (only people, not groups or other followable things), so the profiles load in the same query and in its order; the table_id predicates let Postgres use the follows' partial unique index on (subject_id, object_id, table_id)
+    rows =
+      from(user in Bonfire.Data.Identity.User,
+        as: :user,
+        join: mine in Edge,
+        on:
+          mine.object_id == user.id and mine.subject_id == ^viewer_id and
+            mine.table_id == ^follow_table_id,
+        join: my_follow in Follow,
+        on: my_follow.id == mine.id,
+        join: theirs in Edge,
+        on:
+          theirs.subject_id == user.id and theirs.object_id == ^target_id and
+            theirs.table_id == ^follow_table_id,
+        join: their_follow in Follow,
+        on: their_follow.id == theirs.id,
+        where: user.id != ^target_id and user.id != ^viewer_id,
+        order_by: [desc: mine.id],
+        limit: ^limit,
+        # the total in the same query, counted before the limit
+        select: {user, over(count(user.id))}
+      )
+      |> Bonfire.Me.Users.Queries.user_proloads(:default)
+      |> repo().all()
+
+    case rows do
+      [{_, total} | _] -> {Enum.map(rows, &elem(&1, 0)), total}
+      [] -> {[], 0}
+    end
+  end
+
   @doc """
   Follows someone or something. In case of success, publishes to feeds and federates.
 
