@@ -253,6 +253,39 @@ defmodule Bonfire.Social.Graph.Follows do
     end
   end
 
+  @doc "The GraphQL mutation for `action` (`:follow` or `:unfollow`), taking the followed object's id (`$id`): run by the Mastodon API's follow and unfollow, and by `nomad/4` through GraphQL, so both send the same."
+  def graphql_document(:follow), do: "mutation($id: String!) { follow(id: $id) { id } }"
+  def graphql_document(:unfollow), do: "mutation($id: String!) { unfollow(id: $id) }"
+
+  @doc "Runs `action` (`:follow` or `:unfollow`) through `Bonfire.Federate.ActivityPub.Nomad`, as `follow/3` or `unfollow/3` do: for a local `current_user` it runs them; through our GraphQL API (`graphql_document/1`) when the opts ask for it (`nomad_transport: :graphql`); for a user from elsewhere with a token for their server's Mastodon API in `opts` (`mastodon_api_token`), it acts through that API; for anyone else, it refuses (`{:error, {:not_supported, action, transport}}`)."
+  def nomad(action, subject, object, opts \\ [])
+
+  def nomad(:follow = action, follower, object, opts),
+    do:
+      Bonfire.Federate.ActivityPub.Nomad.run(action, [follower, object, opts],
+        local: &follow/3,
+        graphql: {graphql_document(action), &graphql_variables/3},
+        mastodon_api: action
+      )
+
+  def nomad(:unfollow = action, user, object, opts),
+    do:
+      Bonfire.Federate.ActivityPub.Nomad.run(action, [user, object, opts],
+        local: &unfollow/3,
+        graphql: {graphql_document(action), &graphql_variables/3},
+        mastodon_api: action
+      )
+
+  # the followed object as the API that runs the document can find it: its URI as given, or for a remote Bonfire (a token for its API) our object's canonical URL, as its ids are not ours; else our id
+  defp graphql_variables(_subject, address, _opts) when is_binary(address),
+    do: %{"id" => address}
+
+  defp graphql_variables(_subject, object, opts) do
+    if is_binary(opts[:bonfire_graphql_token]),
+      do: %{"id" => Bonfire.Common.URIs.canonical_url(object)},
+      else: %{"id" => uid(object)}
+  end
+
   def follow(%{} = follower, object, opts) do
     follower = repo().preload(follower, [:character, :peered])
     opts = Keyword.put_new(to_options(opts), :current_user, follower)
@@ -406,16 +439,33 @@ defmodule Bonfire.Social.Graph.Follows do
             end
         end
 
+      # not an id: a URI or a handle (as a client that knows only the address gives it), fetched through federation if not known here yet; else a username
       _ ->
-        error(object, "no object ID, attempting with username")
-
-        case maybe_apply(Characters, :by_username, [object, opts]) do
-          object when is_struct(object) ->
-            local_or_remote_object(object)
-
-          _ ->
-            {:error, :not_permitted}
+        case object_by_address(object, opts) do
+          found when is_struct(found) -> check_follow(follower, found, opts)
+          _ -> {:error, :not_permitted}
         end
+    end
+  end
+
+  # not an id: a URL is what it names, else a username (`user@host`, or a local one), through federation, which fetches either if not known here yet; `nil` if nothing
+  defp object_by_address("http" <> _ = url, _opts),
+    do: through_federation(:get_or_fetch_and_create_by_uri, url)
+
+  defp object_by_address(username, opts) when is_binary(username) do
+    through_federation(:get_or_fetch_and_create_by_username, username) ||
+      maybe_apply(Characters, :by_username, [username, opts], fallback_return: nil)
+  end
+
+  defp object_by_address(_address, _opts), do: nil
+
+  defp through_federation(fun, address) do
+    case maybe_apply(Bonfire.Federate.ActivityPub.AdapterUtils, fun, [address],
+           fallback_return: nil
+         ) do
+      {:ok, found} when is_struct(found) -> found
+      found when is_struct(found) -> found
+      _ -> nil
     end
   end
 
