@@ -470,17 +470,20 @@ defmodule Bonfire.Social.Graph.Follows do
   end
 
   defp opts_for_follow(%{} = follower, %{} = object, opts) do
+    # the follower too, when this follow answers a request of theirs they had to wait on (`accept_follow/2`): they are told it was granted
+    notified = if opts[:notify_requester], do: [object, follower], else: [object]
+
     to_feeds = [
       # we include follows in feeds, since user has control over whether or not they want to see them in settings
       outbox: [follower],
-      notifications: [object]
+      notifications: notified
     ]
 
     to_feeds_ids = FeedActivities.get_publish_feed_ids(to_feeds)
 
-    # compute notification-only feed IDs separately so we only notify the followed user, not the follower
+    # compute notification-only feed IDs separately so we only notify who is meant to be told: the followed user, and the follower of a request that was granted
     notify_feed_ids =
-      FeedActivities.get_publish_feed_ids(notifications: [object])
+      FeedActivities.get_publish_feed_ids(notifications: notified)
       |> uids()
 
     Keyword.merge(
@@ -705,6 +708,13 @@ defmodule Bonfire.Social.Graph.Follows do
 
     with {:ok, %{edge: %{object: object, subject: follower}} = request} <-
            Requests.accept_and_delete(request, Follow, opts),
+         # asked before the follow exists. A caller whose own follow is only half of something else (a join) says `notify_requester: false`, and tells them once itself
+         opts =
+           Keyword.put(
+             opts,
+             :notify_requester,
+             Keyword.get(opts, :notify_requester, true) and requester_to_notify?(follower, object)
+           ),
          {:ok, follow} <-
            follow_with_side_effects(follower, object, opts) |> debug("accept_do_follow"),
          :ok <-
@@ -724,11 +734,39 @@ defmodule Bonfire.Social.Graph.Follows do
     end
   end
 
+  # Only someone here has a notifications feed to tell, and only a follow they could not make themself was waiting for an answer (one boundary query), so an account that is open to followers tells them nothing they did not see happen
+  defp requester_to_notify?(follower, object) do
+    # not a group: following one is joining it, where being let in is told once, as a member
+    not group?(object) and Social.is_local?(follower) and
+      not Bonfire.Boundaries.can?(follower, :follow, object)
+  end
+
+  # a pointer to a category is told apart by its type, which `object_type/1` reads from the category's own table
+  defp group?(object), do: Types.object_type(object) == :group
+
   def reject(follower, followed, opts \\ []) do
-    with {:ok, request} <-
-           Requests.get(follower, Follow, followed, skip_boundary_check: true),
-         {:ok, request} <- ignore(request, opts ++ [current_user: followed]) do
-      {:ok, request}
+    incoming? = opts[:incoming] == true
+
+    case Requests.get(follower, Follow, followed, skip_boundary_check: true) do
+      {:ok, request} ->
+        with {:ok, _} <- end_request(request, follower, followed, opts), do: {:ok, request}
+
+      # an incoming Reject can reach this twice for one answer, and the first already ended the request: nothing left to end is the answer it wanted, where ignoring it again (the old behaviour, which kept the request) found it every time
+      {:error, :not_found} when incoming? ->
+        {:ok, nil}
+
+      other ->
+        other
+    end
+  end
+
+  # The followed account's own answer (`incoming: true`) ends the request, as an accept does, so the requester can ask again and their button no longer shows it. A local decline (the followed here ignoring or rejecting) only marks it ignored, which stays silent to the requester
+  defp end_request(request, follower, followed, opts) do
+    if opts[:incoming] == true do
+      Requests.unrequest(follower, Follow, followed)
+    else
+      # this was for an incoming Reject too, which left the request behind, still counted as pending by the requester's button
+      ignore(request, opts ++ [current_user: followed])
     end
   end
 
@@ -1579,7 +1617,18 @@ defmodule Bonfire.Social.Graph.Follows do
   defp delete_memberships([]), do: :ok
 
   defp delete_memberships(ids) do
+    # read first, to tell whoever owns the circles (a group hosted here tells its other members) once they are gone
+    pairs =
+      repo().all(
+        from(e in Bonfire.Data.AccessControl.Encircle,
+          where: e.id in ^ids,
+          select: {e.circle_id, e.subject_id}
+        )
+      )
+
     repo().delete_many(from(e in Bonfire.Data.AccessControl.Encircle, where: e.id in ^ids))
+
+    maybe_apply(Bonfire.Classify.Categories, :members_left, [pairs], fallback_return: nil)
 
     :ok
   end

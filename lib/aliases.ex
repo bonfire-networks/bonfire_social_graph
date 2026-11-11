@@ -95,7 +95,9 @@ defmodule Bonfire.Social.Graph.Aliases do
       )
       |> debug("urllls")
 
-    with {:ok, target} <-
+    # the HTML fallback comes back as `{:ok, %{body: _}}`, which must reach the `else` below, not be taken for a character
+    # with {:ok, target} <-
+    with {:ok, target} when not is_map_key(target, :body) <-
            Bonfire.Federate.ActivityPub.AdapterUtils.get_by_url_ap_id_or_username(
              target,
              opts
@@ -113,8 +115,17 @@ defmodule Bonfire.Social.Graph.Aliases do
         )
 
       {:error, e} ->
-        info(e, "could not find an AP actor for `#{target}`, maybe add as URL instead")
-        add_link_preview(user, target, nil, opts)
+        if handle?(target) do
+          # error(e, l("Couldn't find a remote profile with that name"))
+          error(e, "could not find an AP actor for the handle `#{target}`")
+          {:error, l("Couldn't find a remote profile with that name")}
+        else
+          info(e, "could not find an AP actor for `#{target}`, maybe add as URL instead")
+          add_link_preview(user, target, nil, opts)
+        end
+
+        # info(e, "could not find an AP actor for `#{target}`, maybe add as URL instead")
+        # add_link_preview(user, target, nil, opts)
     end
   end
 
@@ -132,6 +143,9 @@ defmodule Bonfire.Social.Graph.Aliases do
 
     add_link(user, user_external_url, provider, meta, opts)
   end
+
+  # `@user@host` or `user@host`, without a URL scheme
+  defp handle?(target), do: Regex.match?(~r/^@?[^@\s\/:]+@[^@\s\/:]+$/, String.trim(target))
 
   defp add_link_preview(user, target, fetch_fn, opts) do
     # add_link(user, target, "link", %{}, opts)
