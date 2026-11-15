@@ -198,7 +198,9 @@ defmodule Bonfire.Social.Graph.Aliases do
       add(user, target, opts)
     else
       {:ok, %{} = existing_media} ->
-        with {:ok, target} <- Bonfire.Files.Media.update(user, existing_media, meta) do
+        # `meta` is what the provider reported (not user input), so refreshing a Media another user created is not a user write
+        with {:ok, target} <-
+               Bonfire.Files.Media.update(user, existing_media, meta, skip_boundary_check: true) do
           trigger_fun.(target)
           add(user, target, opts)
         end
@@ -249,8 +251,8 @@ defmodule Bonfire.Social.Graph.Aliases do
     if exists?(user, target) do
       Edges.delete_by_both(user, Alias, target)
 
-      # If the target is a Media, delete it too
-      maybe_delete_media(target)
+      # If the target is a Media nothing else references, delete it too
+      maybe_delete_media(user, target)
 
       # TODO: update AP user?
       # Social.maybe_federate(user, :update, user)
@@ -270,11 +272,16 @@ defmodule Bonfire.Social.Graph.Aliases do
     end
   end
 
-  defp maybe_delete_media(%{__struct__: Bonfire.Files.Media} = target) do
-    Bonfire.Files.Media.hard_delete(target)
+  # A Media is shared by everyone who aliases (or attaches) the same URL, so it is deleted only once no other alias or object holds it, and only if the user may modify it.
+  defp maybe_delete_media(user, %{__struct__: Bonfire.Files.Media} = target) do
+    if not Bonfire.Files.Media.referenced_elsewhere?(target) do
+      Bonfire.Files.Media.hard_delete(nil, target, current_user: user)
+    else
+      :ok
+    end
   end
 
-  defp maybe_delete_media(_), do: :ok
+  defp maybe_delete_media(_user, _), do: :ok
 
   # TODO: abstract the next few functions into Edges
 

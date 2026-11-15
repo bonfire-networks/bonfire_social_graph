@@ -360,14 +360,17 @@ defmodule Bonfire.Social.Graph.Follows do
       |> debug("objects_to_action")
 
     # # Handle local follows in bulk
+    # only these are followed now, so only these get the circle and graph side effects (the originals may be bare ids, or people who are only asked)
+    local_objects = objects_to_action[:local] || []
+
     follows =
-      (objects_to_action[:local] || [])
+      local_objects
       |> Enum.map(fn object ->
         #  FIXME: don't recompute follower's feed_ids every iteration
         opts_for_object = opts_for_follow(follower, object, opts)
         {id(object), do_follow(follower, object, opts_for_object)}
       end)
-      |> do_side_effects(follower, objects, opts)
+      |> do_side_effects(follower, local_objects, opts)
 
     # Remote objects become requests because the far side decides; `:request` ones because following was refused but asking is permitted. Objects that permit neither are absent from both groups and so are simply not acted on.
     requests =
@@ -580,7 +583,8 @@ defmodule Bonfire.Social.Graph.Follows do
 
       Bonfire.Boundaries.Circles.add_to_circles(
         objects,
-        Bonfire.Boundaries.Circles.get_stereotype_circles(follower, :followed)
+        Bonfire.Boundaries.Circles.get_stereotype_circles(follower, :followed),
+        skip_boundary_check: true
       )
 
       Bonfire.Boundaries.Circles.add_to_circles(
@@ -588,7 +592,8 @@ defmodule Bonfire.Social.Graph.Follows do
         Bonfire.Boundaries.Circles.get_stereotype_circles(
           user_objects,
           :followers
-        )
+        ),
+        skip_boundary_check: true
       )
 
       # insert into graph database
@@ -677,8 +682,8 @@ defmodule Bonfire.Social.Graph.Follows do
     # loaded once, through the permission-checked fetch, then passed on as a struct so nothing downstream loads it again
     with {:ok, request} <- Requests.requested(request, opts) do
       case Requests.edge(request) do
-        %{table_id: ^follow_table} ->
-          accept_follow(request, opts)
+        %{table_id: ^follow_table} = edge ->
+          with :ok <- may_decide_follow_request?(edge, opts), do: accept_follow(request, opts)
 
         %{table_id: ^join_verb} ->
           maybe_apply(
@@ -700,6 +705,18 @@ defmodule Bonfire.Social.Graph.Follows do
             l("Sorru, this is not a kind of request that enabled extensions know how to accept")
           )
       end
+    end
+  end
+
+  # Only the one asked (or a moderator of a group asked to be followed) answers a follow request: the requester can read their own request, so being able to load it is not enough
+  defp may_decide_follow_request?(%{object_id: object_id}, opts) do
+    current_user = current_user_required!(opts)
+
+    if skip_boundary_check?(opts) == true or object_id == id(current_user) or
+         Bonfire.Boundaries.can?(current_user, :mediate, object_id) do
+      :ok
+    else
+      error(object_id, :not_permitted)
     end
   end
 
@@ -802,10 +819,10 @@ defmodule Bonfire.Social.Graph.Follows do
       invalidate_followed_outboxes_cache(id(user))
 
       Bonfire.Boundaries.Circles.get_stereotype_circles(user, :followed)
-      ~> Bonfire.Boundaries.Circles.remove_from_circles(object, ...)
+      ~> Bonfire.Boundaries.Circles.remove_from_circles(object, ..., skip_boundary_check: true)
 
       Bonfire.Boundaries.Circles.get_stereotype_circles(object, :followers)
-      ~> Bonfire.Boundaries.Circles.remove_from_circles(user, ...)
+      ~> Bonfire.Boundaries.Circles.remove_from_circles(user, ..., skip_boundary_check: true)
 
       Bonfire.Social.Graph.graph_remove(user, object, Follow)
 
@@ -862,6 +879,7 @@ defmodule Bonfire.Social.Graph.Follows do
   """
   def ignore(request, opts) do
     join_verb = Bonfire.Boundaries.Verbs.get_id!(:join)
+    follow_table = Bonfire.Common.Types.table_id(Follow)
 
     # loaded once, as in `accept/2`
     with {:ok, request} <- Requests.requested(request, opts) do
@@ -873,6 +891,9 @@ defmodule Bonfire.Social.Graph.Follows do
             [current_user_required!(opts), request, opts],
             fallback_return: nil
           ) || error(request, l("Groups are not enabled, so a join request cannot be declined"))
+
+        %{table_id: ^follow_table} = edge ->
+          with :ok <- may_decide_follow_request?(edge, opts), do: Requests.ignore(request, opts)
 
         _ ->
           Requests.ignore(request, opts)
