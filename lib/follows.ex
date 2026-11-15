@@ -1047,6 +1047,24 @@ defmodule Bonfire.Social.Graph.Follows do
     |> page_of_ids(opts)
   end
 
+  @doc """
+  Which of these objects a subject follows, as their ids, in one query (a batch `following?/2`). Requests still waiting are not follows, so are not in it. No boundary check, as in `following?/2`: whose follow it is is the question asked.
+  """
+  def followed_ids(subject, objects) do
+    case objects |> List.wrap() |> Enum.map(&uid/1) |> Enum.reject(&is_nil/1) do
+      [] ->
+        []
+
+      object_ids ->
+        query([subjects: subject, objects: object_ids],
+          preload: :object_id_only,
+          skip_boundary_check: true
+        )
+        |> repo().many()
+        |> List.flatten()
+    end
+  end
+
   @doc "Number of objects a subject follows — see `count_followers/2`."
   def count_followed(subject, opts \\ []) do
     opts = to_options(opts)
