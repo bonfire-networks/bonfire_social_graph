@@ -1559,6 +1559,8 @@ defmodule Bonfire.Social.Graph.Follows do
            {:ok, accepted} <- accept(request, current_user: followed, incoming: true) do
         debug(accepted, "acccccepted")
 
+        tell_requester_answered(follower, followed, true)
+
         # where following IS joining, a remote group never answers the `Join` sent alongside, so this answer settles it too
         maybe_apply(Bonfire.Classify.Categories, :follow_answered, [follower, followed, true],
           fallback_return: nil
@@ -1600,23 +1602,38 @@ defmodule Bonfire.Social.Graph.Follows do
         fallback_return: nil
       )
 
-      case following?(follower, followed) do
-        false ->
-          reject(follower, followed, incoming: true)
+      result =
+        case following?(follower, followed) do
+          false ->
+            reject(follower, followed, incoming: true)
 
-        true ->
-          request =
-            with {:ok, request} <- reject(follower, followed, incoming: true) do
-              request
-              |> debug("rejected previously accepted request")
-            end
+          true ->
+            request =
+              with {:ok, request} <- reject(follower, followed, incoming: true) do
+                request
+                |> debug("rejected previously accepted request")
+              end
 
-          unfollow(follower, followed, incoming: true)
-          |> debug("unfollow rejected follow")
+            unfollow(follower, followed, incoming: true)
+            |> debug("unfollow rejected follow")
 
-          {:ok, request}
-      end
+            {:ok, request}
+        end
+
+      tell_requester_answered(follower, followed, false)
+
+      result
     end
+  end
+
+  # the follower's open pages showing the request pending change when the answer arrives (`Requests.answered_topic/2`): Following after an Accept, Follow again after a Reject
+  defp tell_requester_answered(follower, followed, accepted?) do
+    Requests.broadcast_answered(
+      follower,
+      followed,
+      Bonfire.UI.Social.Graph.FollowButtonLive,
+      %{my_follow: accepted?}
+    )
   end
 
   def ap_receive_activity(
