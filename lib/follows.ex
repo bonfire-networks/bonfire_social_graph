@@ -156,19 +156,74 @@ defmodule Bonfire.Social.Graph.Follows do
   @doc "`{followers, following}` for `user`, accepted follows only, in one query. Not read from `Bonfire.Data.Social.FollowCount`, which counts pending requests too."
   def follow_counts(user) do
     user_id = uid(user)
-    follow_table_id = Types.table_id(Follow)
 
-    from(e in Edge,
-      # a pending request is an edge with Follow's table_id but no Follow row
-      join: f in Follow,
-      on: f.id == e.id,
-      where:
-        e.table_id == ^follow_table_id and (e.object_id == ^user_id or e.subject_id == ^user_id),
+    from(e in accepted_follow_edges(),
+      where: e.object_id == ^user_id or e.subject_id == ^user_id,
       select:
         {filter(count(e.id), e.object_id == ^user_id),
          filter(count(e.id), e.subject_id == ^user_id)}
     )
     |> repo().one()
+  end
+
+  # a pending request is an edge with Follow's table_id but no Follow row, so the join leaves it out
+  defp accepted_follow_edges do
+    from(e in Edge,
+      join: f in Follow,
+      on: f.id == e.id,
+      where: e.table_id == ^Types.table_id(Follow)
+    )
+  end
+
+  @doc "`follow_counts/1` for many ids: `%{id => %{object_count: followers, subject_count: following}}`, accepted follows only. Ids with none map to zeros."
+  def follow_counts_many(ids) do
+    ids = ids |> Types.uids() |> Enum.uniq()
+
+    if ids == [] do
+      %{}
+    else
+      accepted = accepted_follow_edges()
+
+      followers =
+        from(e in accepted,
+          where: e.object_id in ^ids,
+          group_by: e.object_id,
+          select: {e.object_id, count(e.id)}
+        )
+        |> repo().all()
+        |> Map.new()
+
+      following =
+        from(e in accepted,
+          where: e.subject_id in ^ids,
+          group_by: e.subject_id,
+          select: {e.subject_id, count(e.id)}
+        )
+        |> repo().all()
+        |> Map.new()
+
+      Map.new(ids, fn id ->
+        {id, %{object_count: Map.get(followers, id, 0), subject_count: Map.get(following, id, 0)}}
+      end)
+    end
+  end
+
+  @doc "Number of follow requests waiting for `user` (not accepted, not ignored)."
+  def count_requests(user) do
+    case uid(user) do
+      nil ->
+        0
+
+      user_id ->
+        from(r in Request,
+          join: e in assoc(r, :edge),
+          where: e.object_id == ^user_id,
+          where: e.table_id == ^Types.table_id(Follow),
+          where: is_nil(r.ignored_at),
+          select: count(r.id)
+        )
+        |> repo().one() || 0
+    end
   end
 
   @doc "`{users, total}`: up to `limit` people `viewer` follows who follow `target`, for \"Followed by\". Not boundary-checked, like the followers pages; if follows become hideable, this must respect it."

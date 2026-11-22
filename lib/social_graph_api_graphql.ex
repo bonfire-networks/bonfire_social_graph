@@ -10,6 +10,11 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
     # Parent value: {subject, other} — set by the User.relationship field resolver.
     # Per-field resolvers: Absinthe only calls a resolver when that field is requested.
     # Privacy: ghosting/silencing are nil unless subject IS the requesting user.
+    object :familiar_followers do
+      field(:id, :id)
+      field(:accounts, list_of(:user))
+    end
+
     object :relationship do
       field(:following, :boolean) do
         resolve(fn {subject, other}, _, _ ->
@@ -60,9 +65,32 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
       end
     end
 
-    # Count the same edge set as the list resolvers; denormalized counts can lag imports.
-    def followers_count(user, _args, _info), do: {:ok, count_follows(user, :objects)}
-    def following_count(user, _args, _info), do: {:ok, count_follows(user, :subjects)}
+    # accepted follows, batched (`:follow_counts` source); not the `FollowCount` row, which counts pending requests
+    def followers_count(user, _args, info), do: load_follow_count(user, info, :object_count)
+    def following_count(user, _args, info), do: load_follow_count(user, info, :subject_count)
+
+    @doc "`me.familiar_followers(ids:)`: for each id, up to 10 people the current user follows who follow it (`Follows.familiar_followers/3`); none for an id that is not one."
+    def familiar_followers(_me, %{ids: ids}, info) do
+      with {:ok, user} <- GraphQL.current_user_or_not_logged_in(info) do
+        {:ok, Enum.map(ids, &%{id: &1, accounts: familiar_accounts(user, &1)})}
+      end
+    end
+
+    defp familiar_accounts(user, id) do
+      if Bonfire.Common.Types.is_uid?(id) do
+        {accounts, _total} = Bonfire.Social.Graph.Follows.familiar_followers(user, id, 10)
+        accounts
+      else
+        []
+      end
+    end
+
+    @doc "Follow requests waiting for the current user (`me.follow_requests_count`)."
+    def follow_requests_count(_me, _args, info) do
+      with {:ok, user} <- GraphQL.current_user_or_not_logged_in(info) do
+        {:ok, Bonfire.Social.Graph.Follows.count_requests(user)}
+      end
+    end
 
     def followers(user, args, info), do: list_user_follows(user, args, info, :followers)
     def following(user, args, info), do: list_user_follows(user, args, info, :following)
@@ -130,17 +158,23 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
       end
     end
 
-    defp count_follows(user, key) do
+    defp load_follow_count(user, %{context: %{loader: loader}}, field) do
       case Bonfire.Common.Types.uid(user) do
         nil ->
-          0
+          {:ok, 0}
 
         user_id ->
-          Bonfire.Social.Edges.count(Bonfire.Social.Graph.Follows, [{key, user_id}],
-            skip_boundary_check: true
-          ) || 0
+          loader
+          |> Dataloader.load(:follow_counts, :counts, user_id)
+          |> Absinthe.Resolution.Helpers.on_load(fn loader ->
+            {:ok,
+             loader |> Dataloader.get(:follow_counts, :counts, user_id) |> follow_count(field)}
+          end)
       end
     end
+
+    defp follow_count(%{} = counts, field), do: Map.get(counts, field) || 0
+    defp follow_count(_other, _field), do: 0
 
     defp list_user_follows(user, args, info, direction) do
       current_user = GraphQL.current_user(info)
@@ -162,21 +196,18 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
           {:error, "Not authenticated"}
 
         current_user ->
+          opts = [
+            current_user: current_user,
+            type: Bonfire.Data.Social.Follow,
+            paginate: follows_paginate_opts(args)
+          ]
+
           requests =
             case direction do
-              :incoming ->
-                Bonfire.Social.Requests.list_my_requesters(
-                  current_user: current_user,
-                  type: Bonfire.Data.Social.Follow
-                )
-
-              :outgoing ->
-                Bonfire.Social.Requests.list_my_requested(
-                  current_user: current_user,
-                  type: Bonfire.Data.Social.Follow
-                )
+              :incoming -> Bonfire.Social.Requests.list_my_requesters(opts)
+              :outgoing -> Bonfire.Social.Requests.list_my_requested(opts)
             end
-            |> Bonfire.Common.Repo.maybe_preload(edge: [:subject, :object])
+            |> preload_request_edges()
 
           field = if direction == :incoming, do: :subject, else: :object
 
@@ -185,6 +216,11 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
           |> remap_follow_edges(field)
       end
     end
+
+    defp preload_request_edges(%{edges: requests} = page),
+      do: %{page | edges: Bonfire.Common.Repo.maybe_preload(requests, edge: [:subject, :object])}
+
+    defp preload_request_edges(other), do: other
 
     defp remap_follow_edges({:ok, %{edges: edges} = conn}, field) do
       remapped =
