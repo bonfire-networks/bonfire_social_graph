@@ -179,13 +179,21 @@ if Application.compile_env(:bonfire_api_graphql, :modularity) != :disabled and
     defp list_user_follows(user, args, info, direction) do
       current_user = GraphQL.current_user(info)
 
-      {list_fn, field} =
+      {list_fn, field, opts} =
         case direction do
-          :followers -> {&Bonfire.Social.Graph.Follows.list_followers/2, :subject}
-          :following -> {&Bonfire.Social.Graph.Follows.list_followed/2, :object}
+          :followers ->
+            {&Bonfire.Social.Graph.Follows.list_followers/2, :subject, []}
+
+          # accounts only, as the web UI's followed tab (`follows_live_handler.ex`): a followed hashtag is not an account, and the Mastodon mapper dropped it from a page already counted
+          :following ->
+            {&Bonfire.Social.Graph.Follows.list_followed/2, :object,
+             [exclude_object_types: [Bonfire.Tag.Hashtag]]}
         end
 
-      list_fn.(user, paginate: follows_paginate_opts(args), current_user: current_user)
+      list_fn.(
+        user,
+        [paginate: follows_paginate_opts(args), current_user: current_user] ++ opts
+      )
       |> Bonfire.API.GraphQL.Pagination.connection_paginate(args)
       |> remap_follow_edges(field)
     end
